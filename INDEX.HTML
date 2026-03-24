@@ -1,0 +1,1837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ResQNet — National Emergency Response Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:     #060b14;
+  --bg2:    #0d1525;
+  --bg3:    #111e33;
+  --bg4:    #162340;
+  --bg5:    #1c2d50;
+
+  --cyan:   #00e5ff;
+  --cyan2:  #00b8d9;
+  --amber:  #ffab00;
+  --amber2: #ff8f00;
+  --coral:  #ff4757;
+  --coral2: #c0392b;
+  --green:  #00e676;
+  --green2: #00c853;
+  --purple: #e040fb;
+  --teal:   #1de9b6;
+  --orange: #ff6d00;
+  --blue:   #448aff;
+
+  --border:  rgba(0,229,255,0.1);
+  --border2: rgba(0,229,255,0.2);
+  --border3: rgba(0,229,255,0.35);
+  --text:    #e8f4f8;
+  --text2:   #7da8c0;
+  --text3:   #3d6880;
+
+  --font: 'Space Grotesk', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow: 0 8px 32px rgba(0,0,0,0.6);
+  --glow-cyan: 0 0 20px rgba(0,229,255,0.25);
+  --glow-coral: 0 0 20px rgba(255,71,87,0.3);
+  --glow-amber: 0 0 20px rgba(255,171,0,0.25);
+  --sidebar-w: 272px;
+}
+
+[data-perf="low"] * { animation: none !important; transition: none !important; box-shadow: none !important; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); overflow: hidden; }
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--cyan2); border-radius: 3px; opacity: 0.5; }
+::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
+
+/* ===== LAYOUT ===== */
+#app { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+
+/* ===== SIDEBAR ===== */
+#sidebar {
+  width: var(--sidebar-w); background: var(--bg2);
+  border-right: 1px solid var(--border2);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  flex-shrink: 0; transition: width .3s ease; z-index: 200;
+}
+#sidebar.collapsed { width: 58px; }
+#sidebar.collapsed .nav-label,
+#sidebar.collapsed .nav-badge,
+#sidebar.collapsed .section-label,
+#sidebar.collapsed .sidebar-tagline,
+#sidebar.collapsed .sidebar-status { display: none; }
+
+.sidebar-brand {
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--border2);
+  background: linear-gradient(135deg, rgba(0,229,255,0.06), rgba(0,184,217,0.02));
+  flex-shrink: 0;
+}
+.brand-name {
+  font-size: 22px; font-weight: 700; letter-spacing: -1px;
+  background: linear-gradient(90deg, var(--cyan), var(--amber));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.brand-name span { -webkit-text-fill-color: var(--text); }
+.sidebar-tagline { font-size: 10px; color: var(--text3); margin-top: 3px; letter-spacing: 0.5px; }
+.sidebar-status {
+  display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  font-size: 11px; color: var(--green);
+  background: rgba(0,230,118,0.08); border: 1px solid rgba(0,230,118,0.2);
+  border-radius: 20px; padding: 3px 10px; width: fit-content;
+}
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: blink 1.4s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.section-label {
+  font-size: 9px; color: var(--text3); text-transform: uppercase;
+  letter-spacing: 1.5px; padding: 14px 16px 5px; font-weight: 600;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px; cursor: pointer; color: var(--text2);
+  font-size: 13px; transition: all .15s; border-left: 3px solid transparent;
+  position: relative; white-space: nowrap;
+}
+.nav-item:hover { background: rgba(0,229,255,0.05); color: var(--cyan); border-left-color: rgba(0,229,255,0.3); }
+.nav-item.active {
+  background: rgba(0,229,255,0.1); color: var(--cyan);
+  border-left-color: var(--cyan); font-weight: 600;
+}
+.nav-icon { font-size: 16px; min-width: 20px; text-align: center; }
+.nav-badge {
+  font-size: 10px; padding: 2px 6px; border-radius: 10px;
+  font-weight: 700; margin-left: auto; font-family: var(--mono);
+}
+.nav-badge.red { background: rgba(255,71,87,0.2); color: var(--coral); border: 1px solid rgba(255,71,87,0.3); }
+.nav-badge.grn { background: rgba(0,230,118,0.15); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+.nav-badge.amb { background: rgba(255,171,0,0.15); color: var(--amber); border: 1px solid rgba(255,171,0,0.3); }
+
+.sidebar-bottom { margin-top: auto; border-top: 1px solid var(--border); padding: 10px; flex-shrink: 0; }
+.collapse-btn {
+  width: 100%; padding: 8px; background: rgba(0,229,255,0.06);
+  border: 1px solid var(--border2); color: var(--cyan2);
+  border-radius: var(--radius); cursor: pointer; font-size: 12px;
+  font-family: var(--font); transition: all .15s;
+}
+.collapse-btn:hover { background: rgba(0,229,255,0.12); }
+
+/* ===== MAIN ===== */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* ===== HEADER ===== */
+#header {
+  height: 52px; background: var(--bg2);
+  border-bottom: 1px solid var(--border2);
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; flex-shrink: 0;
+}
+.ticker-wrap { flex: 1; overflow: hidden; display: flex; gap: 8px; }
+.pill {
+  font-size: 11px; padding: 3px 10px; border-radius: 20px;
+  border: 1px solid; white-space: nowrap; font-weight: 500;
+}
+.pill.hot { color: var(--coral); border-color: rgba(255,71,87,0.4); background: rgba(255,71,87,0.1); animation: pulse-pill 2s infinite; }
+.pill.warn { color: var(--amber); border-color: rgba(255,171,0,0.4); background: rgba(255,171,0,0.1); }
+.pill.ok { color: var(--green); border-color: rgba(0,230,118,0.35); background: rgba(0,230,118,0.08); }
+@keyframes pulse-pill { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+.hdr-btn {
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text2); font-size: 12px; padding: 5px 11px;
+  border-radius: var(--radius); cursor: pointer; white-space: nowrap;
+  transition: all .15s; font-family: var(--font);
+}
+.hdr-btn:hover { border-color: var(--cyan2); color: var(--cyan); }
+.hdr-btn.active { background: rgba(255,71,87,0.15); border-color: var(--coral); color: var(--coral); }
+.hdr-btn.safe-btn { background: rgba(0,230,118,0.1); border-color: rgba(0,230,118,0.3); color: var(--green); }
+.hdr-btn.safe-btn:hover { background: rgba(0,230,118,0.2); }
+
+.net-status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--green); }
+.net-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: blink 2s infinite; }
+
+.lang-sel {
+  background: var(--bg3); border: 1px solid var(--border2); color: var(--text2);
+  padding: 4px 8px; border-radius: var(--radius); font-size: 12px; font-family: var(--font);
+}
+
+/* ===== CONTENT ===== */
+#content { flex: 1; overflow: hidden; position: relative; }
+.page { display: none; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 20px; }
+.page.active { display: block; }
+#map-page { padding: 0; }
+#map-page.active { display: flex; flex-direction: column; }
+
+/* ===== MAP ===== */
+#map { flex: 1; z-index: 1; min-height: 400px; }
+.map-ctrl-wrap {
+  position: absolute; top: 12px; left: 12px; z-index: 1000;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.map-ctrl {
+  background: rgba(13,21,37,0.92); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 10px; backdrop-filter: blur(8px);
+}
+.map-ctrl-lbl { font-size: 10px; color: var(--cyan2); margin-bottom: 6px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.layer-row { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text2); cursor: pointer; margin: 3px 0; }
+.layer-row input { accent-color: var(--cyan); }
+.map-filter-wrap {
+  position: absolute; top: 12px; right: 12px; z-index: 1000;
+  background: rgba(13,21,37,0.92); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 10px; backdrop-filter: blur(8px);
+}
+.flt-btn {
+  font-size: 11px; padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--border2); background: none; color: var(--text2);
+  cursor: pointer; transition: all .15s; margin: 2px;
+}
+.flt-btn:hover { border-color: var(--cyan2); color: var(--cyan); }
+.flt-btn.active { background: var(--cyan); border-color: var(--cyan); color: var(--bg); font-weight: 700; }
+.map-statsbar {
+  background: rgba(6,11,20,0.95); border-top: 1px solid var(--border2);
+  padding: 6px 14px; display: flex; gap: 20px; font-size: 11px;
+  flex-shrink: 0; font-family: var(--mono);
+}
+.ms { color: var(--text3); } .ms b { color: var(--cyan); }
+
+/* ===== PAGE TITLES ===== */
+.pg-title {
+  font-size: 22px; font-weight: 700; margin-bottom: 4px;
+  background: linear-gradient(90deg, var(--text), var(--cyan));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.pg-sub { font-size: 12px; color: var(--text2); margin-bottom: 18px; }
+
+/* ===== CARDS ===== */
+.card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 16px; margin-bottom: 14px;
+}
+.card:hover { border-color: var(--border2); }
+.card h4 { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text); }
+
+/* ===== STAT CARDS ===== */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.stat-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 16px 18px;
+  position: relative; overflow: hidden; transition: border-color .2s;
+}
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+}
+.stat-card.sc-red::before { background: linear-gradient(90deg, var(--coral), transparent); }
+.stat-card.sc-cyan::before { background: linear-gradient(90deg, var(--cyan), transparent); }
+.stat-card.sc-amber::before { background: linear-gradient(90deg, var(--amber), transparent); }
+.stat-card.sc-blue::before { background: linear-gradient(90deg, var(--blue), transparent); }
+.stat-card:hover { border-color: var(--border3); }
+.sv { font-size: 30px; font-weight: 700; line-height: 1; font-family: var(--mono); }
+.sl { font-size: 11px; color: var(--text2); margin-top: 6px; }
+.sc { font-size: 11px; margin-top: 4px; }
+.sc.up { color: var(--green); } .sc.dn { color: var(--coral); }
+
+/* ===== TWO/THREE COL ===== */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+/* ===== SECTION HEADER ===== */
+.sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sec-hdr h3 { font-size: 14px; font-weight: 600; color: var(--text); }
+.sec-hdr h3 span { color: var(--cyan); }
+
+/* ===== BADGES & TAGS ===== */
+.badge { font-size: 10px; padding: 3px 8px; border-radius: 20px; font-weight: 700; display: inline-block; }
+.badge-red { background: rgba(255,71,87,0.15); color: var(--coral); border: 1px solid rgba(255,71,87,0.3); }
+.badge-grn { background: rgba(0,230,118,0.12); color: var(--green); border: 1px solid rgba(0,230,118,0.25); }
+.badge-amb { background: rgba(255,171,0,0.12); color: var(--amber); border: 1px solid rgba(255,171,0,0.25); }
+.badge-cyan { background: rgba(0,229,255,0.12); color: var(--cyan); border: 1px solid rgba(0,229,255,0.25); }
+.tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 600; }
+.tag-crit { background: rgba(255,71,87,0.18); color: var(--coral); }
+.tag-warn { background: rgba(255,171,0,0.15); color: var(--amber); }
+.tag-info { background: rgba(68,138,255,0.15); color: var(--blue); }
+.tag-ok { background: rgba(0,230,118,0.12); color: var(--green); }
+
+/* ===== RISK BARS ===== */
+.risk-bar { height: 8px; border-radius: 4px; background: var(--bg5); overflow: hidden; margin: 5px 0; }
+.risk-fill { height: 100%; border-radius: 4px; transition: width .6s; }
+.rf-high { background: linear-gradient(90deg, var(--coral), var(--orange)); }
+.rf-med  { background: linear-gradient(90deg, var(--amber), #ffca28); }
+.rf-low  { background: linear-gradient(90deg, var(--green2), var(--teal)); }
+
+/* ===== ALERTS ===== */
+.alert-item {
+  display: flex; gap: 12px; padding: 12px 14px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 10px;
+  border-left: 3px solid; transition: all .15s;
+}
+.alert-item:hover { background: var(--bg4); border-color: var(--border2); }
+.alert-item.al-crit { border-left-color: var(--coral); }
+.alert-item.al-warn { border-left-color: var(--amber); }
+.alert-item.al-info { border-left-color: var(--blue); }
+.alert-icon { font-size: 22px; flex-shrink: 0; }
+.alert-body { flex: 1; }
+.alert-title { font-size: 13px; font-weight: 600; }
+.alert-meta { font-size: 11px; color: var(--text2); margin-top: 3px; line-height: 1.5; }
+.alert-time { font-size: 10px; color: var(--text3); flex-shrink: 0; align-self: flex-start; font-family: var(--mono); }
+
+/* ===== TABS ===== */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border2); margin-bottom: 16px; }
+.tab { padding: 9px 16px; font-size: 12px; color: var(--text2); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; font-weight: 500; }
+.tab:hover { color: var(--text); background: rgba(0,229,255,0.04); }
+.tab.active { color: var(--cyan); border-bottom-color: var(--cyan); background: rgba(0,229,255,0.05); }
+
+/* ===== FORMS ===== */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 11px; color: var(--cyan2); margin-bottom: 6px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%; background: var(--bg2); border: 1px solid var(--border2);
+  color: var(--text); border-radius: var(--radius); padding: 10px 12px;
+  font-size: 13px; font-family: var(--font); transition: border-color .15s;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus { outline: none; border-color: var(--cyan2); box-shadow: 0 0 0 3px rgba(0,229,255,0.08); }
+.form-group textarea { resize: vertical; min-height: 80px; }
+
+/* ===== BUTTONS ===== */
+.btn { padding: 10px 20px; border-radius: var(--radius); border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s; font-family: var(--font); }
+.btn-primary { background: linear-gradient(135deg, var(--coral), #ff6b35); color: #fff; box-shadow: 0 4px 15px rgba(255,71,87,0.3); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,71,87,0.4); }
+.btn-cyan { background: linear-gradient(135deg, var(--cyan), var(--cyan2)); color: var(--bg); font-weight: 700; box-shadow: 0 4px 15px rgba(0,229,255,0.2); }
+.btn-cyan:hover { transform: translateY(-1px); }
+.btn-success { background: linear-gradient(135deg, var(--green2), var(--teal)); color: var(--bg); font-weight: 700; box-shadow: 0 4px 15px rgba(0,230,118,0.25); }
+.btn-ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+.btn-ghost:hover { background: var(--bg4); color: var(--text); border-color: var(--border3); }
+.btn-amber { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: var(--bg); font-weight: 700; }
+.btn-sm { padding: 5px 12px; font-size: 11px; }
+
+/* ===== PROGRESS ===== */
+.prog-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.prog-label { font-size: 12px; color: var(--text2); width: 135px; flex-shrink: 0; }
+.prog-bar { flex: 1; height: 8px; background: var(--bg5); border-radius: 4px; overflow: hidden; }
+.prog-fill { height: 100%; border-radius: 4px; transition: width 1.2s ease; }
+.prog-val { font-size: 12px; font-weight: 600; width: 38px; text-align: right; font-family: var(--mono); }
+
+/* ===== SHELTER ===== */
+.shelter-item {
+  padding: 14px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  margin-bottom: 10px; display: flex; justify-content: space-between;
+  align-items: flex-start; transition: all .15s;
+}
+.shelter-item:hover { border-color: var(--border2); background: var(--bg4); }
+.shelter-name { font-size: 14px; font-weight: 600; color: var(--text); }
+.shelter-meta { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.7; }
+.cap-bar { width: 90px; height: 5px; background: var(--bg5); border-radius: 3px; margin-top: 6px; }
+.cap-fill { height: 100%; border-radius: 3px; transition: width .6s; }
+
+/* ===== RESOURCE ===== */
+.resource-item {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 14px; transition: all .15s;
+}
+.resource-item:hover { border-color: var(--border2); }
+.resource-icon { font-size: 24px; flex-shrink: 0; }
+.resource-info { flex: 1; }
+.resource-name { font-size: 13px; font-weight: 600; }
+.resource-loc { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.qty-bar { width: 110px; height: 6px; background: var(--bg5); border-radius: 3px; }
+.qty-fill { height: 100%; border-radius: 3px; background: var(--teal); }
+
+/* ===== CHAT ===== */
+#chat-messages { height: 300px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border2); margin-bottom: 12px; }
+.chat-msg { max-width: 82%; padding: 9px 13px; border-radius: 12px; font-size: 13px; line-height: 1.5; }
+.chat-msg.out { background: rgba(0,229,255,0.12); border: 1px solid rgba(0,229,255,0.2); align-self: flex-end; }
+.chat-msg.in { background: var(--bg3); border: 1px solid var(--border); align-self: flex-start; }
+.chat-msg .sndr { font-size: 10px; color: var(--cyan2); margin-bottom: 3px; font-weight: 600; }
+.chat-in-row { display: flex; gap: 8px; }
+.chat-in-row input { flex: 1; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); border-radius: var(--radius); padding: 10px 12px; font-size: 13px; font-family: var(--font); }
+.chat-in-row input:focus { outline: none; border-color: var(--cyan2); }
+
+/* ===== BOT ===== */
+#bot-messages { height: 240px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border2); margin-bottom: 10px; }
+.bot-msg { padding: 9px 13px; border-radius: 12px; font-size: 12px; line-height: 1.6; max-width: 90%; white-space: pre-line; }
+.bot-msg.bot { background: rgba(224,64,251,0.1); border: 1px solid rgba(224,64,251,0.2); align-self: flex-start; }
+.bot-msg.user { background: var(--bg3); align-self: flex-end; }
+.quick-replies { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.qr-btn { font-size: 11px; padding: 5px 11px; border-radius: 20px; border: 1px solid var(--border2); background: none; color: var(--text2); cursor: pointer; transition: all .15s; font-family: var(--font); }
+.qr-btn:hover { border-color: var(--cyan2); color: var(--cyan); background: rgba(0,229,255,0.06); }
+
+/* ===== MISSING PERSONS ===== */
+.person-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; display: flex; gap: 14px; margin-bottom: 12px; transition: all .15s; }
+.person-card:hover { border-color: var(--border2); }
+.person-avatar { width: 52px; height: 52px; border-radius: 50%; background: var(--bg4); border: 2px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+.person-name { font-size: 14px; font-weight: 700; }
+.person-meta { font-size: 11px; color: var(--text2); margin-top: 5px; line-height: 1.7; }
+
+/* ===== VOLUNTEERS ===== */
+.vol-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; margin-bottom: 10px; display: flex; gap: 12px; align-items: center; transition: all .15s; }
+.vol-card:hover { border-color: var(--border2); }
+.vol-avatar { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--bg); font-size: 16px; flex-shrink: 0; }
+
+/* ===== FIRST AID ===== */
+.aid-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all .15s; }
+.aid-card:hover { border-color: var(--border2); background: var(--bg4); }
+.aid-hdr { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+.aid-arrow { margin-left: auto; font-size: 12px; color: var(--text3); transition: transform .2s; }
+.aid-card.open .aid-arrow { transform: rotate(180deg); }
+.aid-body { font-size: 12px; color: var(--text2); margin-top: 10px; line-height: 1.8; display: none; padding-left: 4px; }
+.aid-card.open .aid-body { display: block; }
+
+/* ===== QUIZ ===== */
+.quiz-q { font-size: 15px; font-weight: 600; margin-bottom: 14px; line-height: 1.5; color: var(--text); }
+.quiz-opts { display: flex; flex-direction: column; gap: 10px; }
+.quiz-opt { padding: 11px 16px; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); cursor: pointer; font-size: 13px; transition: all .15s; }
+.quiz-opt:hover { background: var(--bg4); border-color: var(--cyan2); color: var(--cyan); }
+.quiz-opt.correct { background: rgba(0,230,118,0.1); border-color: var(--green); color: var(--green); }
+.quiz-opt.wrong { background: rgba(255,71,87,0.1); border-color: var(--coral); color: var(--coral); }
+
+/* ===== ADMIN ===== */
+.admin-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.admin-tbl th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border2); color: var(--cyan2); font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.admin-tbl td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.admin-tbl tr:hover td { background: rgba(0,229,255,0.04); }
+
+/* ===== MODALS ===== */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-lg); padding: 26px; width: 90%; max-width: 520px; max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow), var(--glow-cyan); }
+.modal h2 { font-size: 18px; margin-bottom: 18px; color: var(--text); }
+.modal-close { float: right; background: none; border: none; color: var(--text2); font-size: 20px; cursor: pointer; line-height: 1; }
+.modal-close:hover { color: var(--coral); }
+
+/* ===== SOS BUTTON ===== */
+#sos-btn {
+  position: fixed; bottom: 26px; right: 26px; z-index: 9999;
+  width: 66px; height: 66px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--coral), #ff2d20);
+  border: 3px solid rgba(255,71,87,0.4); color: #fff;
+  font-size: 12px; font-weight: 800; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  line-height: 1.1; font-family: var(--font);
+  box-shadow: 0 0 0 0 rgba(255,71,87,0.6), 0 8px 25px rgba(255,71,87,0.4);
+  animation: sos-pulse 2s infinite;
+}
+@keyframes sos-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255,71,87,0.7), 0 8px 25px rgba(255,71,87,0.4); }
+  70% { box-shadow: 0 0 0 16px rgba(255,71,87,0), 0 8px 25px rgba(255,71,87,0.4); }
+  100% { box-shadow: 0 0 0 0 rgba(255,71,87,0), 0 8px 25px rgba(255,71,87,0.4); }
+}
+#sos-btn:hover { transform: scale(1.08); }
+
+/* ===== NOTIF PANEL ===== */
+.notif-panel {
+  position: fixed; top: 52px; right: 0; width: 330px;
+  height: calc(100vh - 52px); background: var(--bg2);
+  border-left: 1px solid var(--border2); z-index: 5000;
+  overflow-y: auto; padding: 14px; display: none;
+}
+.notif-panel.open { display: block; }
+.notif-item { padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; border-left: 3px solid; transition: all .15s; }
+.notif-item:hover { background: var(--bg3); }
+.notif-item.ni-alert { border-left-color: var(--coral); }
+.notif-item.ni-info { border-left-color: var(--blue); }
+.notif-item.ni-ok { border-left-color: var(--green); }
+.ni-title { font-size: 13px; font-weight: 600; }
+.ni-body { font-size: 11px; color: var(--text2); margin-top: 4px; line-height: 1.5; }
+.ni-time { font-size: 10px; color: var(--text3); margin-top: 4px; font-family: var(--mono); }
+
+/* ===== OFFLINE BANNER ===== */
+.offline-bar { display: none; background: linear-gradient(90deg, var(--amber2), var(--amber)); color: #000; padding: 6px 18px; font-size: 12px; font-weight: 700; text-align: center; }
+.offline-bar.show { display: block; }
+
+/* ===== HELPLINE CARDS ===== */
+.helpline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.helpline-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 16px;
+  display: flex; gap: 12px; align-items: center;
+  transition: all .2s; cursor: pointer; text-decoration: none;
+  position: relative; overflow: hidden;
+}
+.helpline-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+.helpline-card.hc-red::before { background: linear-gradient(90deg, var(--coral), transparent); }
+.helpline-card.hc-cyan::before { background: linear-gradient(90deg, var(--cyan), transparent); }
+.helpline-card.hc-amber::before { background: linear-gradient(90deg, var(--amber), transparent); }
+.helpline-card.hc-green::before { background: linear-gradient(90deg, var(--green), transparent); }
+.helpline-card.hc-purple::before { background: linear-gradient(90deg, var(--purple), transparent); }
+.helpline-card:hover { background: var(--bg4); border-color: var(--border3); transform: translateY(-2px); }
+.hl-icon { font-size: 28px; flex-shrink: 0; }
+.hl-info { flex: 1; }
+.hl-name { font-size: 12px; color: var(--text2); font-weight: 500; }
+.hl-number { font-size: 22px; font-weight: 700; font-family: var(--mono); }
+.hl-desc { font-size: 10px; color: var(--text3); margin-top: 3px; }
+.hl-number.c-red { color: var(--coral); }
+.hl-number.c-cyan { color: var(--cyan); }
+.hl-number.c-amber { color: var(--amber); }
+.hl-number.c-green { color: var(--green); }
+.hl-number.c-purple { color: var(--purple); }
+.call-btn {
+  font-size: 10px; padding: 3px 8px; border-radius: 20px;
+  font-weight: 700; border: none; cursor: pointer; margin-top: 5px;
+  font-family: var(--font);
+}
+
+/* ===== GOVT WEBSITE CARDS ===== */
+.gov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.gov-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 16px;
+  transition: all .2s; text-decoration: none; color: var(--text);
+  display: block; position: relative; overflow: hidden;
+}
+.gov-card::after {
+  content: '↗'; position: absolute; top: 14px; right: 14px;
+  font-size: 14px; color: var(--text3); transition: all .2s;
+}
+.gov-card:hover { background: var(--bg4); border-color: var(--cyan2); transform: translateY(-2px); }
+.gov-card:hover::after { color: var(--cyan); transform: translate(2px,-2px); }
+.gov-card-icon { font-size: 28px; margin-bottom: 10px; }
+.gov-card-name { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.gov-card-url { font-size: 10px; color: var(--cyan2); margin-bottom: 8px; font-family: var(--mono); }
+.gov-card-desc { font-size: 11px; color: var(--text2); line-height: 1.6; }
+
+/* ===== COMMUNITY POST ===== */
+.post-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px; margin-bottom: 10px;
+  transition: all .15s;
+}
+.post-card:hover { border-color: var(--border2); }
+.post-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.post-user { font-size: 13px; font-weight: 600; }
+.post-type { font-size: 10px; color: var(--text3); }
+.post-text { font-size: 13px; line-height: 1.6; }
+
+/* ===== MISC ===== */
+.sep { height: 1px; background: var(--border); margin: 16px 0; }
+.flex-row { display: flex; gap: 8px; align-items: center; }
+.txt-muted { color: var(--text2); }
+.txt-sm { font-size: 12px; }
+.txt-cyan { color: var(--cyan); }
+.txt-coral { color: var(--coral); }
+.txt-amber { color: var(--amber); }
+.txt-green { color: var(--green); }
+.glow-text-cyan { text-shadow: 0 0 12px rgba(0,229,255,0.4); }
+
+/* ===== LEAFLET OVERRIDES ===== */
+.leaflet-popup-content-wrapper { background: var(--bg2); border: 1px solid var(--border2); color: var(--text); border-radius: var(--radius); box-shadow: var(--shadow), var(--glow-cyan); }
+.leaflet-popup-tip { background: var(--bg2); }
+.leaflet-popup-content { margin: 12px 16px; font-size: 13px; font-family: var(--font); }
+.leaflet-control-zoom a { background: var(--bg2) !important; border-color: var(--border2) !important; color: var(--cyan) !important; }
+.leaflet-control-zoom a:hover { background: var(--bg3) !important; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  #sidebar { position: fixed; height: 100vh; transform: translateX(-100%); transition: transform .3s; }
+  #sidebar.mob-open { transform: translateX(0); }
+  .two-col, .three-col { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+  .helpline-grid { grid-template-columns: 1fr 1fr; }
+  .gov-grid { grid-template-columns: 1fr; }
+  #sos-btn { bottom: 18px; right: 18px; width: 58px; height: 58px; }
+  .ticker-wrap .pill:nth-child(n+3) { display: none; }
+}
+</style>
+</head>
+<body>
+<div id="offline-bar2" class="offline-bar"></div>
+<div id="app">
+
+<!-- ================ SIDEBAR ================ -->
+<nav id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-name">ResQ<span>Net</span></div>
+    <div class="sidebar-tagline">National Emergency Response Platform</div>
+    <div class="sidebar-status"><div class="live-dot"></div> LIVE MONITORING</div>
+  </div>
+
+  <div class="section-label">Overview</div>
+  <div class="nav-item active" onclick="goPage('dashboard')"><span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></div>
+  <div class="nav-item" onclick="goPage('map-page')"><span class="nav-icon">🗺️</span><span class="nav-label">Live Map</span><span class="nav-badge red">3</span></div>
+  <div class="nav-item" onclick="goPage('alerts')"><span class="nav-icon">🔔</span><span class="nav-label">Alert Center</span><span class="nav-badge red">5</span></div>
+  <div class="nav-item" onclick="goPage('helplines')"><span class="nav-icon">📞</span><span class="nav-label">Helpline Numbers</span><span class="nav-badge amb">24/7</span></div>
+
+  <div class="section-label">Response</div>
+  <div class="nav-item" onclick="goPage('shelters')"><span class="nav-icon">🏕️</span><span class="nav-label">Shelters</span><span class="nav-badge grn">12</span></div>
+  <div class="nav-item" onclick="goPage('resources')"><span class="nav-icon">📦</span><span class="nav-label">Resources</span></div>
+  <div class="nav-item" onclick="goPage('volunteers')"><span class="nav-icon">🧑‍🤝‍🧑</span><span class="nav-label">Volunteers</span></div>
+  <div class="nav-item" onclick="goPage('missing')"><span class="nav-icon">🔍</span><span class="nav-label">Missing Persons</span><span class="nav-badge red">3</span></div>
+
+  <div class="section-label">Community</div>
+  <div class="nav-item" onclick="goPage('report')"><span class="nav-icon">📝</span><span class="nav-label">Report Incident</span></div>
+  <div class="nav-item" onclick="goPage('chat')"><span class="nav-icon">💬</span><span class="nav-label">Community Chat</span></div>
+  <div class="nav-item" onclick="goPage('relief')"><span class="nav-icon">🤲</span><span class="nav-label">Relief Request</span></div>
+  <div class="nav-item" onclick="goPage('community')"><span class="nav-icon">🌐</span><span class="nav-label">Community Posts</span></div>
+
+  <div class="section-label">Tools & Info</div>
+  <div class="nav-item" onclick="goPage('firstaid')"><span class="nav-icon">🏥</span><span class="nav-label">First Aid Guide</span></div>
+  <div class="nav-item" onclick="goPage('chatbot')"><span class="nav-icon">🤖</span><span class="nav-label">AI Assistant</span></div>
+  <div class="nav-item" onclick="goPage('quiz')"><span class="nav-icon">📚</span><span class="nav-label">Awareness Quiz</span></div>
+  <div class="nav-item" onclick="goPage('govlinks')"><span class="nav-icon">🏛️</span><span class="nav-label">Govt. Websites</span></div>
+  <div class="nav-item" onclick="goPage('guidelines')"><span class="nav-icon">📋</span><span class="nav-label">Guidelines</span></div>
+  <div class="nav-item" onclick="goPage('prediction')"><span class="nav-icon">🌤️</span><span class="nav-label">Risk Prediction</span></div>
+
+  <div class="section-label">Admin</div>
+  <div class="nav-item" onclick="goPage('admin')"><span class="nav-icon">⚙️</span><span class="nav-label">Admin Panel</span></div>
+
+  <div class="sidebar-bottom">
+    <button class="collapse-btn" onclick="toggleSidebar()">⟨ Collapse</button>
+  </div>
+</nav>
+
+<!-- ================ MAIN ================ -->
+<div id="main">
+  <!-- HEADER -->
+  <div id="header">
+    <button class="hdr-btn" id="mob-btn" style="display:none" onclick="toggleMob()">☰</button>
+    <div class="ticker-wrap">
+      <span class="pill hot">🔴 FLOOD ALERT — Mumbai</span>
+      <span class="pill warn">⚠️ FIRE — Pune</span>
+      <span class="pill ok">✓ 3 Shelters Open</span>
+    </div>
+    <div class="net-status"><div class="net-dot"></div><span id="net-lbl">Online</span></div>
+    <button class="hdr-btn safe-btn" onclick="markSafe()">✅ Mark Safe</button>
+    <button class="hdr-btn" onclick="toggleNotif()">🔔 <span style="font-size:10px;background:var(--coral);color:#fff;padding:1px 5px;border-radius:10px;">5</span></button>
+    <select class="lang-sel" onchange="changeLang(this.value)"><option value="en">🇬🇧 EN</option><option value="hi">🇮🇳 HI</option></select>
+    <button class="hdr-btn" id="perf-btn" onclick="togglePerf()">⚡ Perf</button>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- ========== DASHBOARD ========== -->
+    <div class="page active" id="dashboard">
+      <div class="pg-title">Emergency Operations Center</div>
+      <div class="pg-sub" id="dash-ts">Loading timestamp...</div>
+
+      <div class="stat-grid">
+        <div class="stat-card sc-red"><div class="sv txt-coral" id="s-inc">24</div><div class="sl">Active Incidents</div><div class="sc dn">↑ 3 this hour</div></div>
+        <div class="stat-card sc-cyan"><div class="sv txt-cyan" id="s-resc">1,284</div><div class="sl">People Rescued</div><div class="sc up">↑ 47 today</div></div>
+        <div class="stat-card sc-amber"><div class="sv txt-amber" id="s-miss">63</div><div class="sl">Missing Reports</div><div class="sc up">↓ 8 resolved</div></div>
+        <div class="stat-card sc-blue"><div class="sv" style="color:var(--blue)" id="s-vol">312</div><div class="sl">Active Volunteers</div><div class="sc up">↑ 28 new</div></div>
+      </div>
+
+      <!-- Quick Helplines Banner -->
+      <div style="background:linear-gradient(135deg,rgba(255,71,87,0.12),rgba(255,171,0,0.08));border:1px solid rgba(255,71,87,0.3);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:18px;display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:12px;font-weight:700;color:var(--coral)">🚨 EMERGENCY:</span>
+        <span style="font-size:13px;font-weight:700;font-family:var(--mono)"><span style="color:var(--text2)">Police</span> <span style="color:var(--amber)">100</span></span>
+        <span style="font-size:13px;font-weight:700;font-family:var(--mono)"><span style="color:var(--text2)">Ambulance</span> <span style="color:var(--coral)">108</span></span>
+        <span style="font-size:13px;font-weight:700;font-family:var(--mono)"><span style="color:var(--text2)">Fire</span> <span style="color:var(--orange)">101</span></span>
+        <span style="font-size:13px;font-weight:700;font-family:var(--mono)"><span style="color:var(--text2)">Disaster</span> <span style="color:var(--cyan)">1078</span></span>
+        <span style="font-size:13px;font-weight:700;font-family:var(--mono)"><span style="color:var(--text2)">National</span> <span style="color:var(--green)">112</span></span>
+        <button class="btn btn-primary btn-sm" onclick="goPage('helplines')" style="margin-left:auto">View All →</button>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <div class="sec-hdr"><h3>🎯 Zone <span>Risk Levels</span></h3></div>
+          <div class="card">
+            <div style="margin-bottom:14px">
+              <div class="flex-row" style="justify-content:space-between;margin-bottom:4px"><span class="txt-sm">Mumbai Central</span><span class="badge badge-red">HIGH RISK</span></div>
+              <div class="risk-bar"><div class="risk-fill rf-high" style="width:85%"></div></div>
+              <div style="font-size:10px;color:var(--text3)">Flood • 85% risk level</div>
+            </div>
+            <div style="margin-bottom:14px">
+              <div class="flex-row" style="justify-content:space-between;margin-bottom:4px"><span class="txt-sm">Pune Cantonment</span><span class="badge badge-amb">MEDIUM</span></div>
+              <div class="risk-bar"><div class="risk-fill rf-med" style="width:52%"></div></div>
+              <div style="font-size:10px;color:var(--text3)">Fire • 52% risk level</div>
+            </div>
+            <div>
+              <div class="flex-row" style="justify-content:space-between;margin-bottom:4px"><span class="txt-sm">Nashik District</span><span class="badge badge-grn">LOW</span></div>
+              <div class="risk-bar"><div class="risk-fill rf-low" style="width:18%"></div></div>
+              <div style="font-size:10px;color:var(--text3)">Seismic • 18% risk level</div>
+            </div>
+          </div>
+
+          <div class="sec-hdr"><h3>📊 Rescue <span>Progress</span></h3></div>
+          <div class="card">
+            <div class="prog-row"><div class="prog-label">People Evacuated</div><div class="prog-bar"><div class="prog-fill" style="width:72%;background:linear-gradient(90deg,var(--teal),var(--cyan2))"></div></div><div class="prog-val txt-cyan">72%</div></div>
+            <div class="prog-row"><div class="prog-label">Shelters Filled</div><div class="prog-bar"><div class="prog-fill" style="width:58%;background:linear-gradient(90deg,var(--amber),#ffca28)"></div></div><div class="prog-val txt-amber">58%</div></div>
+            <div class="prog-row"><div class="prog-label">Food Distributed</div><div class="prog-bar"><div class="prog-fill" style="width:44%;background:linear-gradient(90deg,var(--blue),#82b1ff)"></div></div><div class="prog-val" style="color:var(--blue)">44%</div></div>
+            <div class="prog-row"><div class="prog-label">Medical Aid</div><div class="prog-bar"><div class="prog-fill" style="width:81%;background:linear-gradient(90deg,var(--coral),var(--orange))"></div></div><div class="prog-val txt-coral">81%</div></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="sec-hdr"><h3>🔔 Recent <span>Alerts</span></h3><button class="btn btn-ghost btn-sm" onclick="goPage('alerts')">View All</button></div>
+          <div class="alert-item al-crit">
+            <div class="alert-icon">🌊</div>
+            <div class="alert-body"><div class="alert-title">Flash Flood — Dharavi</div><div class="alert-meta">Water level 3.2m • 2,400 affected</div></div>
+            <div class="alert-time">2m ago</div>
+          </div>
+          <div class="alert-item al-warn">
+            <div class="alert-icon">🔥</div>
+            <div class="alert-body"><div class="alert-title">Fire — Andheri Industrial</div><div class="alert-meta">Contained 60% • 3 units deployed</div></div>
+            <div class="alert-time">18m ago</div>
+          </div>
+          <div class="alert-item al-info">
+            <div class="alert-icon">⛅</div>
+            <div class="alert-body"><div class="alert-title">Heavy Rain Warning — IMD</div><div class="alert-meta">Red alert for Mumbai, next 48hrs</div></div>
+            <div class="alert-time">1h ago</div>
+          </div>
+
+          <div class="sec-hdr" style="margin-top:16px"><h3>📈 Incidents <span>(7 Days)</span></h3></div>
+          <div class="card" style="padding:12px"><canvas id="incidentChart" height="140"></canvas></div>
+        </div>
+      </div>
+
+      <div class="sec-hdr" style="margin-top:4px"><h3>⚡ Quick <span>Stats</span></h3></div>
+      <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat-card sc-red"><div class="sv" style="font-size:24px;color:var(--purple)">48</div><div class="sl">Hospitals Active</div></div>
+        <div class="stat-card sc-amber"><div class="sv" style="font-size:24px;color:var(--amber)">7.2T</div><div class="sl">Water Supplied (L)</div></div>
+        <div class="stat-card sc-cyan"><div class="sv" style="font-size:24px;color:var(--teal)">891</div><div class="sl">Meals Served</div></div>
+        <div class="stat-card sc-blue"><div class="sv" style="font-size:24px;color:var(--coral)">14</div><div class="sl">SOS Received</div></div>
+      </div>
+    </div>
+
+    <!-- ========== MAP ========== -->
+    <div class="page" id="map-page" style="position:relative">
+      <div id="map" style="height:calc(100vh - 112px)"></div>
+      <div class="map-ctrl-wrap">
+        <div class="map-ctrl">
+          <div class="map-ctrl-lbl">Layers</div>
+          <label class="layer-row"><input type="checkbox" id="lyr-dis" checked onchange="toggleLayer('disaster')"> Disasters</label>
+          <label class="layer-row"><input type="checkbox" id="lyr-she" checked onchange="toggleLayer('shelter')"> Shelters</label>
+          <label class="layer-row"><input type="checkbox" id="lyr-res" checked onchange="toggleLayer('resource')"> Resources</label>
+        </div>
+        <div class="map-ctrl">
+          <div class="map-ctrl-lbl">Heatmap</div>
+          <label class="layer-row"><input type="checkbox" id="lyr-heat" onchange="toggleHeat()"> Show Heatmap</label>
+        </div>
+      </div>
+      <div class="map-filter-wrap">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:7px;font-weight:600;letter-spacing:1px">FILTER TYPE</div>
+        <button class="flt-btn active" onclick="filterMap('all',this)">All</button>
+        <button class="flt-btn" onclick="filterMap('flood',this)">🌊 Flood</button>
+        <button class="flt-btn" onclick="filterMap('fire',this)">🔥 Fire</button>
+        <button class="flt-btn" onclick="filterMap('earthquake',this)">🌍 Quake</button>
+      </div>
+      <div class="map-statsbar">
+        <div class="ms">Incidents: <b id="ms-i">8</b></div>
+        <div class="ms">Shelters: <b id="ms-s">12</b></div>
+        <div class="ms">Resources: <b id="ms-r">6</b></div>
+        <div class="ms">Zoom: <b id="ms-z">11</b></div>
+      </div>
+    </div>
+
+    <!-- ========== HELPLINES ========== -->
+    <div class="page" id="helplines">
+      <div class="pg-title">📞 Emergency Helplines</div>
+      <div class="pg-sub">24/7 active helplines — tap any number to call</div>
+
+      <!-- Critical Numbers -->
+      <div class="sec-hdr"><h3>🚨 <span>Critical Emergency Numbers</span></h3></div>
+      <div class="helpline-grid">
+        <div class="helpline-card hc-red" onclick="callNumber('112')">
+          <div class="hl-icon">🆘</div>
+          <div class="hl-info">
+            <div class="hl-name">National Emergency</div>
+            <div class="hl-number c-red">112</div>
+            <div class="hl-desc">Police + Fire + Medical (Unified)</div>
+            <button class="call-btn" style="background:rgba(255,71,87,0.2);color:var(--coral)">📞 CALL NOW</button>
+          </div>
+        </div>
+        <div class="helpline-card hc-cyan" onclick="callNumber('108')">
+          <div class="hl-icon">🚑</div>
+          <div class="hl-info">
+            <div class="hl-name">Ambulance / Medical</div>
+            <div class="hl-number c-cyan">108</div>
+            <div class="hl-desc">Free emergency ambulance service</div>
+            <button class="call-btn" style="background:rgba(0,229,255,0.15);color:var(--cyan)">📞 CALL NOW</button>
+          </div>
+        </div>
+        <div class="helpline-card hc-amber" onclick="callNumber('100')">
+          <div class="hl-icon">👮</div>
+          <div class="hl-info">
+            <div class="hl-name">Police</div>
+            <div class="hl-number c-amber">100</div>
+            <div class="hl-desc">Law enforcement & rescue</div>
+            <button class="call-btn" style="background:rgba(255,171,0,0.15);color:var(--amber)">📞 CALL NOW</button>
+          </div>
+        </div>
+        <div class="helpline-card hc-green" onclick="callNumber('101')">
+          <div class="hl-icon">🚒</div>
+          <div class="hl-info">
+            <div class="hl-name">Fire Brigade</div>
+            <div class="hl-number c-green">101</div>
+            <div class="hl-desc">Fire emergency & rescue</div>
+            <button class="call-btn" style="background:rgba(0,230,118,0.12);color:var(--green)">📞 CALL NOW</button>
+          </div>
+        </div>
+        <div class="helpline-card hc-cyan" onclick="callNumber('1078')">
+          <div class="hl-icon">🌊</div>
+          <div class="hl-info">
+            <div class="hl-name">Disaster Management</div>
+            <div class="hl-number c-cyan">1078</div>
+            <div class="hl-desc">NDMA disaster helpline</div>
+            <button class="call-btn" style="background:rgba(0,229,255,0.15);color:var(--cyan)">📞 CALL NOW</button>
+          </div>
+        </div>
+        <div class="helpline-card hc-purple" onclick="callNumber('102')">
+          <div class="hl-icon">🏥</div>
+          <div class="hl-info">
+            <div class="hl-name">Medical Transport</div>
+            <div class="hl-number c-purple" style="color:var(--purple)">102</div>
+            <div class="hl-desc">Patient transport services</div>
+            <button class="call-btn" style="background:rgba(224,64,251,0.12);color:var(--purple)">📞 CALL NOW</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Disaster-Specific -->
+      <div class="sec-hdr" style="margin-top:8px"><h3>🆘 <span>Disaster-Specific Helplines</span></h3></div>
+      <div class="helpline-grid">
+        <div class="helpline-card hc-cyan" onclick="callNumber('011-24363260')">
+          <div class="hl-icon">🏛️</div>
+          <div class="hl-info">
+            <div class="hl-name">NDRF Headquarters</div>
+            <div class="hl-number c-cyan" style="font-size:16px">011-24363260</div>
+            <div class="hl-desc">National Disaster Response Force</div>
+          </div>
+        </div>
+        <div class="helpline-card hc-red" onclick="callNumber('1800-180-1891')">
+          <div class="hl-icon">🔴</div>
+          <div class="hl-info">
+            <div class="hl-name">Indian Red Cross</div>
+            <div class="hl-number c-red" style="font-size:16px">1800-180-1891</div>
+            <div class="hl-desc">Blood bank & emergency relief</div>
+          </div>
+        </div>
+        <div class="helpline-card hc-amber" onclick="callNumber('1070')">
+          <div class="hl-icon">⛈️</div>
+          <div class="hl-info">
+            <div class="hl-name">State Disaster Helpline</div>
+            <div class="hl-number c-amber">1070</div>
+            <div class="hl-desc">State emergency operations</div>
+          </div>
+        </div>
+        <div class="helpline-card hc-green" onclick="callNumber('1800-11-3322')">
+          <div class="hl-icon">🌿</div>
+          <div class="hl-info">
+            <div class="hl-name">Environment Helpline</div>
+            <div class="hl-number c-green" style="font-size:16px">1800-11-3322</div>
+            <div class="hl-desc">Pollution & environmental disasters</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Special Helplines -->
+      <div class="sec-hdr" style="margin-top:8px"><h3>💜 <span>Vulnerable Groups</span></h3></div>
+      <div class="helpline-grid">
+        <div class="helpline-card hc-purple" onclick="callNumber('1091')">
+          <div class="hl-icon">👩</div>
+          <div class="hl-info">
+            <div class="hl-name">Women Helpline</div>
+            <div class="hl-number c-purple" style="color:var(--purple)">1091</div>
+            <div class="hl-desc">Women in distress or emergency</div>
+          </div>
+        </div>
+        <div class="helpline-card hc-amber" onclick="callNumber('1098')">
+          <div class="hl-icon">👧</div>
+          <div class="hl-info">
+            <div class="hl-name">Child Helpline</div>
+            <div class="hl-number c-amber">1098</div>
+            <div class="hl-desc">Children in need of care</div>
+          </div>
+        </div>
+        <div class="helpline-card hc-cyan" onclick="callNumber('14567')">
+          <div class="hl-icon">👴</div>
+          <div class="hl-info">
+            <div class="hl-name">Senior Citizen Helpline</div>
+            <div class="hl-number c-cyan">14567</div>
+            <div class="hl-desc">Elder care during disasters</div>
+          </div>
+        </div>
+        <div class="helpline-card hc-green" onclick="callNumber('iCall: 9152987821')">
+          <div class="hl-icon">🧠</div>
+          <div class="hl-info">
+            <div class="hl-name">Mental Health (iCall)</div>
+            <div class="hl-number c-green" style="font-size:15px">9152987821</div>
+            <div class="hl-desc">Disaster trauma support</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SMS/Helpline Info -->
+      <div class="card" style="background:linear-gradient(135deg,rgba(0,229,255,0.06),rgba(0,184,217,0.02));border-color:var(--border2)">
+        <h4 style="color:var(--cyan)">📱 Additional Contact Methods</h4>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;font-size:12px;color:var(--text2)">
+          <div>📧 <b style="color:var(--text)">Email:</b> ndma@gov.in</div>
+          <div>🐦 <b style="color:var(--text)">Twitter:</b> @ndmaindia</div>
+          <div>🌐 <b style="color:var(--text)">Web:</b> ndma.gov.in</div>
+          <div>📱 <b style="color:var(--text)">SMS Alerts:</b> Register at sachet.ndma.gov.in</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== ALERTS ========== -->
+    <div class="page" id="alerts">
+      <div class="pg-title">🔔 Alert Center</div>
+      <div class="pg-sub">Real-time disaster alerts and notifications</div>
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab(this,'tab-all')">All Alerts</div>
+        <div class="tab" onclick="switchTab(this,'tab-crit')">🔴 Critical</div>
+        <div class="tab" onclick="switchTab(this,'tab-info')">ℹ️ Informational</div>
+      </div>
+      <div id="tab-all"><div id="alert-list"></div></div>
+      <div id="tab-crit" style="display:none"></div>
+      <div id="tab-info" style="display:none"></div>
+    </div>
+
+    <!-- ========== SHELTERS ========== -->
+    <div class="page" id="shelters">
+      <div class="pg-title">🏕️ Shelter Network</div>
+      <div class="pg-sub">Available emergency shelters — live capacity updates</div>
+      <div class="flex-row" style="margin-bottom:14px">
+        <input type="text" placeholder="🔍 Search shelters..." id="she-search" oninput="filterShelters(this.value)" style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:10px 14px;border-radius:var(--radius);font-size:13px;font-family:var(--font)">
+        <button class="btn btn-cyan btn-sm" onclick="openModal('checkin-modal')">+ Check In</button>
+      </div>
+      <div id="shelter-list"></div>
+    </div>
+
+    <!-- ========== RESOURCES ========== -->
+    <div class="page" id="resources">
+      <div class="pg-title">📦 Resource Tracker</div>
+      <div class="pg-sub">Real-time supply and relief material availability</div>
+      <div id="resource-list"></div>
+      <div class="sec-hdr" style="margin-top:8px"><h3>📊 Supply <span>Distribution</span></h3></div>
+      <div class="card" style="padding:14px"><canvas id="resourceChart" height="170"></canvas></div>
+    </div>
+
+    <!-- ========== VOLUNTEERS ========== -->
+    <div class="page" id="volunteers">
+      <div class="pg-title">🧑‍🤝‍🧑 Volunteer Network</div>
+      <div class="pg-sub">Active field responders and rescue teams</div>
+      <button class="btn btn-cyan btn-sm" style="margin-bottom:14px" onclick="openModal('vol-modal')">+ Register as Volunteer</button>
+      <div id="vol-list"></div>
+    </div>
+
+    <!-- ========== MISSING ========== -->
+    <div class="page" id="missing">
+      <div class="pg-title">🔍 Missing Persons</div>
+      <div class="pg-sub">Report and locate missing individuals</div>
+      <button class="btn btn-primary btn-sm" style="margin-bottom:14px" onclick="openModal('missing-modal')">+ Report Missing Person</button>
+      <div id="missing-list"></div>
+    </div>
+
+    <!-- ========== REPORT ========== -->
+    <div class="page" id="report">
+      <div class="pg-title">📝 Report an Incident</div>
+      <div class="pg-sub">Submit disaster reports with location and evidence</div>
+      <div class="card">
+        <div class="two-col">
+          <div class="form-group"><label>Disaster Type</label><select id="r-type"><option>Flood</option><option>Fire</option><option>Earthquake</option><option>Landslide</option><option>Other</option></select></div>
+          <div class="form-group"><label>Priority</label><select id="r-prio"><option>Critical</option><option>High</option><option>Normal</option></select></div>
+        </div>
+        <div class="form-group"><label>Location</label><input type="text" id="r-loc" placeholder="Area / Landmark / GPS coordinates"></div>
+        <div class="form-group"><label>Description</label><textarea id="r-desc" placeholder="Describe the situation — number of people affected, severity, immediate needs..."></textarea></div>
+        <div class="form-group"><label>Your Contact (optional)</label><input type="text" id="r-contact" placeholder="Phone number or email"></div>
+        <div class="form-group"><label>Upload Image (optional)</label><input type="file" id="r-img" accept="image/*" style="color:var(--text2)"></div>
+        <div class="flex-row">
+          <button class="btn btn-primary" onclick="submitReport()">Submit Report</button>
+          <button class="btn btn-ghost" onclick="autoLocate()">📍 Auto-Locate</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== CHAT ========== -->
+    <div class="page" id="chat">
+      <div class="pg-title">💬 Community Chat</div>
+      <div class="pg-sub">Real-time coordination for affected communities</div>
+      <div class="two-col">
+        <div>
+          <div id="chat-messages"></div>
+          <div class="chat-in-row">
+            <input type="text" id="chat-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendChat()">
+            <button class="btn btn-cyan btn-sm" onclick="sendChat()">Send</button>
+          </div>
+        </div>
+        <div>
+          <div class="card"><h4>👥 Online Users</h4><div id="online-users" style="font-size:12px;color:var(--text2);line-height:2"></div></div>
+          <div class="card" style="margin-top:0"><h4 style="color:var(--coral)">⚠️ Panic Monitoring</h4><div style="font-size:12px;color:var(--text2)">Watching: <span style="color:var(--amber)">help, trapped, emergency, SOS, rescue, dying</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== RELIEF ========== -->
+    <div class="page" id="relief">
+      <div class="pg-title">🤲 Relief Request</div>
+      <div class="pg-sub">Request food, water, medicine, rescue, or shelter</div>
+      <div class="card">
+        <div class="two-col">
+          <div class="form-group"><label>Request Type</label><select id="rel-type"><option>Food</option><option>Water</option><option>Medicine</option><option>Rescue</option><option>Shelter</option><option>Clothing</option></select></div>
+          <div class="form-group"><label>Number of People</label><input type="number" id="rel-count" placeholder="How many?"></div>
+        </div>
+        <div class="form-group"><label>Your Location</label><input type="text" id="rel-loc" placeholder="Current address or landmark"></div>
+        <div class="form-group"><label>Notes</label><textarea id="rel-notes" placeholder="Special requirements — elderly, children, medical conditions..."></textarea></div>
+        <button class="btn btn-primary" onclick="submitRelief()">Submit Request</button>
+      </div>
+      <div class="sec-hdr" style="margin-top:16px"><h3>📋 Your <span>Requests</span></h3></div>
+      <div id="relief-history"></div>
+    </div>
+
+    <!-- ========== COMMUNITY ========== -->
+    <div class="page" id="community">
+      <div class="pg-title">🌐 Community Posts</div>
+      <div class="pg-sub">Share updates, offer help, coordinate locally</div>
+      <div class="card" style="margin-bottom:14px">
+        <textarea id="post-text" placeholder="Share an update, offer help, or request assistance..." style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);padding:12px;border-radius:var(--radius);font-size:13px;min-height:80px;font-family:var(--font);resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-cyan btn-sm" onclick="addPost()">Post</button>
+          <select id="post-type" class="lang-sel"><option>📢 Update</option><option>🤝 Offer Help</option><option>🙏 Need Help</option></select>
+        </div>
+      </div>
+      <div id="post-list"></div>
+    </div>
+
+    <!-- ========== FIRST AID ========== -->
+    <div class="page" id="firstaid">
+      <div class="pg-title">🏥 First Aid Guide</div>
+      <div class="pg-sub">Emergency medical procedures — tap any card to expand</div>
+      <div id="firstaid-list"></div>
+      <div class="sec-hdr" style="margin-top:8px"><h3>🎥 Rescue <span>Video Guides</span></h3></div>
+      <div class="two-col">
+        <div class="card" style="text-align:center;cursor:pointer;transition:all .2s" onmouseenter="this.style.borderColor='var(--cyan2)'" onmouseleave="this.style.borderColor='var(--border)'" onclick="alert('Video: CPR Technique — Loading (lazy loaded for performance)')">
+          <div style="font-size:36px;margin-bottom:10px">▶️</div>
+          <div style="font-size:14px;font-weight:600">CPR Technique</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">3:24 min • Click to play</div>
+        </div>
+        <div class="card" style="text-align:center;cursor:pointer;transition:all .2s" onmouseenter="this.style.borderColor='var(--cyan2)'" onmouseleave="this.style.borderColor='var(--border)'" onclick="alert('Video: Flood Evacuation Guide — Loading')">
+          <div style="font-size:36px;margin-bottom:10px">▶️</div>
+          <div style="font-size:14px;font-weight:600">Flood Evacuation</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">5:11 min • Click to play</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== AI CHATBOT ========== -->
+    <div class="page" id="chatbot">
+      <div class="pg-title">🤖 AI Emergency Assistant</div>
+      <div class="pg-sub">Rule-based instant response — works offline too</div>
+      <div class="card">
+        <div id="bot-messages"></div>
+        <div class="quick-replies">
+          <button class="qr-btn" onclick="botReply('nearest shelter')">🏕️ Nearest Shelter</button>
+          <button class="qr-btn" onclick="botReply('flood safety')">🌊 Flood Safety</button>
+          <button class="qr-btn" onclick="botReply('earthquake tips')">🌍 Earthquake</button>
+          <button class="qr-btn" onclick="botReply('first aid cpr')">❤️ CPR Steps</button>
+          <button class="qr-btn" onclick="botReply('sos help')">🆘 SOS</button>
+          <button class="qr-btn" onclick="botReply('contact emergency')">📞 Contacts</button>
+        </div>
+        <div class="chat-in-row">
+          <input type="text" id="bot-input" placeholder="Ask about disaster response, first aid, contacts..." onkeydown="if(event.key==='Enter')sendBot()">
+          <button class="btn btn-cyan btn-sm" onclick="sendBot()">Ask</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== QUIZ ========== -->
+    <div class="page" id="quiz">
+      <div class="pg-title">📚 Disaster Awareness Quiz</div>
+      <div class="pg-sub">Score: <span id="quiz-score" style="color:var(--cyan)">0/0</span></div>
+      <div class="card" id="quiz-card"></div>
+    </div>
+
+    <!-- ========== GOVT WEBSITES ========== -->
+    <div class="page" id="govlinks">
+      <div class="pg-title">🏛️ Government Websites</div>
+      <div class="pg-sub">Official disaster management portals — click to open</div>
+      <div id="gov-grid-list"></div>
+    </div>
+
+    <!-- ========== GUIDELINES ========== -->
+    <div class="page" id="guidelines">
+      <div class="pg-title">📋 Government Guidelines</div>
+      <div class="pg-sub">Official disaster preparedness and response protocols</div>
+      <div id="guidelines-list"></div>
+    </div>
+
+    <!-- ========== PREDICTION ========== -->
+    <div class="page" id="prediction">
+      <div class="pg-title">🌤️ Risk Prediction</div>
+      <div class="pg-sub">Weather-based disaster risk assessment model</div>
+      <div class="card">
+        <div class="two-col">
+          <div class="form-group"><label>Rainfall (mm/day)</label><input type="number" id="pred-rain" placeholder="e.g. 120" min="0" max="500"></div>
+          <div class="form-group"><label>Wind Speed (km/h)</label><input type="number" id="pred-wind" placeholder="e.g. 45" min="0" max="300"></div>
+          <div class="form-group"><label>Temperature (°C)</label><input type="number" id="pred-temp" placeholder="e.g. 38" min="-10" max="55"></div>
+          <div class="form-group"><label>Region Type</label><select id="pred-reg"><option>Coastal</option><option>Urban</option><option>Rural</option><option>Mountainous</option><option>Forest</option></select></div>
+        </div>
+        <button class="btn btn-cyan" onclick="runPrediction()">Analyze Risk →</button>
+      </div>
+      <div class="card" id="pred-result" style="display:none;margin-top:4px"></div>
+    </div>
+
+    <!-- ========== ADMIN ========== -->
+    <div class="page" id="admin">
+      <div class="pg-title">⚙️ Admin Control Panel</div>
+      <div class="pg-sub">Manage incidents, users, resources, and broadcast alerts</div>
+      <div class="stat-grid">
+        <div class="stat-card sc-red"><div class="sv txt-coral">24</div><div class="sl">Pending Approvals</div></div>
+        <div class="stat-card sc-cyan"><div class="sv txt-cyan">1,847</div><div class="sl">Registered Users</div></div>
+        <div class="stat-card sc-amber"><div class="sv txt-amber">156</div><div class="sl">Active Sessions</div></div>
+        <div class="stat-card sc-blue"><div class="sv" style="color:var(--green)">98.7%</div><div class="sl">System Uptime</div></div>
+      </div>
+      <div class="two-col">
+        <div>
+          <div class="sec-hdr"><h3>📋 Recent <span>Reports</span></h3></div>
+          <div class="card" style="padding:8px;overflow-x:auto">
+            <table class="admin-tbl"><thead><tr><th>ID</th><th>Type</th><th>Location</th><th>Status</th><th>Action</th></tr></thead><tbody id="admin-tbody"></tbody></table>
+          </div>
+        </div>
+        <div>
+          <div class="sec-hdr"><h3>📊 Incident <span>Breakdown</span></h3></div>
+          <div class="card" style="padding:14px"><canvas id="adminChart" height="190"></canvas></div>
+        </div>
+      </div>
+      <div class="sec-hdr"><h3>📢 Broadcast <span>Alert</span></h3></div>
+      <div class="card">
+        <div class="two-col">
+          <div class="form-group"><label>Alert Message</label><input type="text" id="adm-msg" placeholder="Enter emergency broadcast..."></div>
+          <div class="form-group"><label>Severity</label><select id="adm-sev"><option>Critical</option><option>Warning</option><option>Info</option></select></div>
+        </div>
+        <button class="btn btn-primary" onclick="broadcastAlert()">📢 Broadcast to All Users</button>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /app -->
+
+<!-- SOS BUTTON -->
+<button id="sos-btn" onclick="openModal('sos-modal')">🆘<br>SOS</button>
+
+<!-- ============ MODALS ============ -->
+<div class="modal-overlay" id="sos-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('sos-modal')">✕</button>
+    <h2 style="color:var(--coral)">🆘 EMERGENCY SOS</h2>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:18px">Your location will be shared with emergency responders immediately. Stay on the line.</p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-primary" onclick="sendSOS('rescue')" style="font-size:15px;padding:14px">🚁 REQUEST RESCUE TEAM</button>
+      <button class="btn btn-amber" onclick="sendSOS('medical')" style="font-size:15px;padding:14px">🚑 MEDICAL EMERGENCY</button>
+      <button class="btn btn-ghost" onclick="sendSOS('fire')" style="font-size:15px;padding:14px;border-color:var(--orange);color:var(--orange)">🚒 FIRE EMERGENCY</button>
+    </div>
+    <div style="margin-top:18px;padding:14px;background:var(--bg3);border-radius:var(--radius);font-size:12px;color:var(--text2);line-height:2;border:1px solid var(--border2)">
+      📍 <b>Location:</b> <span id="sos-loc" style="color:var(--cyan)">Detecting...</span><br>
+      📞 <b>National:</b> <span style="color:var(--green)">112</span> &nbsp;|&nbsp;
+      <b>Ambulance:</b> <span style="color:var(--cyan)">108</span> &nbsp;|&nbsp;
+      <b>Police:</b> <span style="color:var(--amber)">100</span> &nbsp;|&nbsp;
+      <b>Fire:</b> <span style="color:var(--orange)">101</span><br>
+      🌊 <b>Disaster Helpline:</b> <span style="color:var(--coral)">1078</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="checkin-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('checkin-modal')">✕</button>
+    <h2>🏕️ Shelter Check-In</h2>
+    <div class="form-group"><label>Select Shelter</label><select id="ci-she"><option>Dharavi Community Center (450 cap)</option><option>Andheri Relief Camp (300 cap)</option><option>BKC Convention Center (1000 cap)</option></select></div>
+    <div class="form-group"><label>Your Name</label><input type="text" id="ci-name" placeholder="Full name"></div>
+    <div class="form-group"><label>Group Size</label><input type="number" id="ci-cnt" placeholder="1" min="1"></div>
+    <div class="form-group"><label>Special Needs</label><input type="text" id="ci-need" placeholder="Medical, dietary restrictions, etc."></div>
+    <button class="btn btn-success" onclick="checkinShelter()">✅ Confirm Check-In</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="missing-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('missing-modal')">✕</button>
+    <h2>🔍 Report Missing Person</h2>
+    <div class="form-group"><label>Full Name</label><input type="text" id="mp-nm" placeholder="Person's full name"></div>
+    <div class="form-group"><label>Age</label><input type="number" id="mp-ag" placeholder="Age in years"></div>
+    <div class="form-group"><label>Last Seen Location</label><input type="text" id="mp-lc" placeholder="Area / street / landmark"></div>
+    <div class="form-group"><label>Description</label><textarea id="mp-ds" placeholder="Physical appearance, clothing, identifying marks..."></textarea></div>
+    <div class="form-group"><label>Your Contact</label><input type="text" id="mp-ct" placeholder="Phone number"></div>
+    <button class="btn btn-primary" onclick="reportMissing()">Submit Report</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="vol-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('vol-modal')">✕</button>
+    <h2>🧑‍🤝‍🧑 Volunteer Registration</h2>
+    <div class="form-group"><label>Full Name</label><input type="text" id="vn-nm" placeholder="Your name"></div>
+    <div class="form-group"><label>Skill</label><select id="vn-sk"><option>Medical</option><option>Rescue/Diving</option><option>Logistics</option><option>Communication</option><option>Cooking</option><option>Driving</option></select></div>
+    <div class="form-group"><label>Availability</label><select id="vn-av"><option>Full-time</option><option>Part-time</option><option>Weekends</option></select></div>
+    <div class="form-group"><label>Phone Number</label><input type="text" id="vn-ph" placeholder="Contact number"></div>
+    <button class="btn btn-success" onclick="registerVol()">Register Now</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="safe-modal">
+  <div class="modal" style="text-align:center">
+    <button class="modal-close" onclick="closeModal('safe-modal')">✕</button>
+    <div style="font-size:52px;margin:16px 0">✅</div>
+    <h2 style="color:var(--green)">You're Marked Safe!</h2>
+    <p style="color:var(--text2);font-size:13px;margin:14px 0 8px">Your status has been shared with emergency coordinators and registered contacts.</p>
+    <div style="font-size:12px;color:var(--text3);font-family:var(--mono)"><span id="safe-loc">Location shared</span> • <span id="safe-time"></span></div>
+  </div>
+</div>
+
+<!-- NOTIFICATION PANEL -->
+<div class="notif-panel" id="notif-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div style="font-size:15px;font-weight:700;color:var(--text)">🔔 Notifications</div>
+    <button onclick="toggleNotif()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px">✕</button>
+  </div>
+  <div id="notif-list"></div>
+</div>
+
+<!-- ============ SCRIPTS ============ -->
+<script>
+// ===== DATA =====
+const ALERTS_DATA = [
+  { type:'al-crit', icon:'🌊', title:'Flash Flood — Dharavi', meta:'Water level 3.2m above mark • 2,400 residents affected', time:'2m ago', tag:'critical' },
+  { type:'al-crit', icon:'🌊', title:'Flooding — Kurla West', meta:'Road connectivity broken • 800 families isolated', time:'15m ago', tag:'critical' },
+  { type:'al-warn', icon:'🔥', title:'Industrial Fire — Andheri', meta:'Contained 60% • 3 fire units deployed', time:'18m ago', tag:'warning' },
+  { type:'al-warn', icon:'🌍', title:'Seismic Activity — Nashik', meta:'Magnitude 4.2 • Minor tremors reported', time:'34m ago', tag:'warning' },
+  { type:'al-info', icon:'⛅', title:'IMD Heavy Rain Warning', meta:'Red alert for Mumbai, Thane, Raigad — next 48 hours', time:'1h ago', tag:'info' },
+  { type:'al-info', icon:'🚌', title:'Evacuation Route Update', meta:'NH-48 blocked — use Eastern Express Highway', time:'2h ago', tag:'info' },
+];
+
+const SHELTERS_DATA = [
+  { name:'Dharavi Community Center', dist:'0.8 km', cap:450, occ:320, status:'Open', addr:'Dharavi, Mumbai' },
+  { name:'Andheri Relief Camp', dist:'2.1 km', cap:300, occ:180, status:'Open', addr:'Andheri East, Mumbai' },
+  { name:'Kurla High School', dist:'3.4 km', cap:200, occ:195, status:'Full', addr:'Kurla, Mumbai' },
+  { name:'BKC Convention Center', dist:'4.2 km', cap:1000, occ:420, status:'Open', addr:'BKC, Mumbai' },
+  { name:'Chembur Camp', dist:'5.1 km', cap:350, occ:100, status:'Open', addr:'Chembur, Mumbai' },
+  { name:'Govandi Shelter', dist:'6.3 km', cap:280, occ:280, status:'Full', addr:'Govandi, Mumbai' },
+];
+
+const RESOURCES_DATA = [
+  { icon:'🍚', name:'Food Packets', loc:'Dharavi Center', qty:820, max:1000 },
+  { icon:'💧', name:'Water Bottles', loc:'BKC Warehouse', qty:3200, max:5000 },
+  { icon:'💊', name:'Medical Kits', loc:'Andheri Hospital', qty:145, max:200 },
+  { icon:'🛏️', name:'Blankets', loc:'Kurla School', qty:380, max:600 },
+  { icon:'🔦', name:'Torches / Lights', loc:'Multiple Points', qty:92, max:150 },
+  { icon:'🩺', name:'First Aid Boxes', loc:'All Shelters', qty:54, max:60 },
+];
+
+const VOLUNTEERS_DATA = [
+  { name:'Rajesh Kumar', skill:'Medical', status:'Active', area:'Dharavi', color:'#ff4757' },
+  { name:'Priya Sharma', skill:'Logistics', status:'Active', area:'Andheri', color:'#00e5ff' },
+  { name:'Amit Patel', skill:'Rescue/Diving', status:'En Route', area:'Kurla', color:'#00e676' },
+  { name:'Sunita Yadav', skill:'Communication', status:'Active', area:'BKC', color:'#e040fb' },
+  { name:'Deepak Singh', skill:'Driving', status:'Rest', area:'Chembur', color:'#ffab00' },
+  { name:'Meera Nair', skill:'Medical', status:'Active', area:'Govandi', color:'#1de9b6' },
+];
+
+const MISSING_DATA = [
+  { name:'Suresh Patil', age:65, loc:'Dharavi Sector 5', desc:'Diabetic, blue shirt, last seen 8am', contact:'9876543210', status:'Searching' },
+  { name:'Ananya Roy', age:8, loc:'Kurla West Lane 3', desc:'School uniform, red bag, missing since school', contact:'9765432109', status:'Searching' },
+  { name:'Mohammed Iqbal', age:45, loc:'Andheri flooding area', desc:'Heart patient, last seen near Andheri station', contact:'9654321098', status:'Located' },
+];
+
+const FIRSTAID_DATA = [
+  { icon:'❤️', title:'CPR — Cardiopulmonary Resuscitation', steps:'1. Check scene safety\n2. Tap shoulders — "Are you OK?"\n3. Call 108 for ambulance\n4. Place heel of hand on center of chest\n5. Push hard & fast — 100-120 compressions/min\n6. 2 rescue breaths (if trained)\n7. Continue 30:2 cycle until help arrives' },
+  { icon:'🩹', title:'Wound & Bleeding Control', steps:'1. Apply firm pressure with clean cloth\n2. Elevate injured area above heart\n3. Do NOT remove cloth — add more if soaked\n4. For severe: apply tourniquet 5cm above wound\n5. Mark time of tourniquet application\n6. Seek medical help immediately' },
+  { icon:'🌊', title:'Near-Drowning Response', steps:'1. Remove from water safely — do NOT risk yourself\n2. Check breathing\n3. Start CPR if not breathing\n4. Keep warm — prevent hypothermia\n5. Even if conscious, take to hospital (secondary drowning risk)\n6. Call 108 immediately' },
+  { icon:'🔥', title:'Burn Treatment', steps:'1. Cool under running water 20 minutes (NOT ice)\n2. Remove clothing/jewelry near burn if not stuck\n3. Cover loosely with clean dressing\n4. Do NOT apply butter, oil, or toothpaste\n5. Call 108 for severe burns\n6. Treat for shock if needed' },
+  { icon:'🌍', title:'Earthquake Safety (Drop-Cover-Hold)', steps:'1. DROP to hands and knees immediately\n2. COVER under sturdy table or against interior wall\n3. HOLD ON until all shaking stops\n4. Stay away from windows and heavy objects\n5. After shaking — check for gas leaks (no flames!)\n6. Do NOT use elevators. Be ready for aftershocks.' },
+  { icon:'🏊', title:'Flood Evacuation Protocol', steps:'1. Move to highest point immediately\n2. Do NOT walk/drive through moving water\n3. Turn off all electricity at main switch\n4. Take emergency kit: water, food, meds, documents\n5. Signal from roof/window if trapped\n6. Call 1078 or 112 for rescue' },
+];
+
+const QUIZ_DATA = [
+  { q:'What is the unified national emergency number in India?', opts:['100','108','112','1078'], correct:2 },
+  { q:'During an earthquake, what should you do immediately?', opts:['Run outside fast','Drop, Cover, Hold On','Stand near windows','Call police first'], correct:1 },
+  { q:'How long should you cool a burn under running water?', opts:['2 minutes','5 minutes','10 minutes','20 minutes'], correct:3 },
+  { q:'What is the correct CPR compression rate per minute?', opts:['60-80','80-100','100-120','120-140'], correct:2 },
+  { q:'During a flood, what should you absolutely avoid?', opts:['Moving to high ground','Walking through moving water','Listening to radio alerts','Helping neighbors safely'], correct:1 },
+];
+
+const GUIDELINES_DATA = [
+  { icon:'🌊', title:'Flood Response Protocol', body:'Evacuate immediately upon flood warning. Move to designated relief camps on high ground. Do NOT walk or drive through flooded areas — 15cm of moving water can knock you down. Switch off electricity at the main breaker. Keep emergency kit: water, food, medicines, documents, torch. Follow NDRF and local authority instructions only.' },
+  { icon:'🔥', title:'Fire Emergency Guidelines', body:'Activate nearest fire alarm immediately. Call 101. Evacuate using stairs — never elevators. Crawl low under smoke (cleaner air near floor). Close doors to slow fire spread. Meet at designated assembly point. Do NOT re-enter until fire dept clears the building.' },
+  { icon:'🌍', title:'Earthquake Preparedness', body:'Before: Secure heavy furniture to walls, store emergency supplies. During: Drop, Cover, Hold On — stay away from windows and tall shelves. After: Check for injuries, smell for gas leaks — do NOT use open flames. Do NOT use elevators. Be prepared for aftershocks up to hours later.' },
+  { icon:'🧳', title:'Emergency Go-Bag Checklist', body:'Water (3-day supply per person) • Non-perishable food • First aid kit • Flashlight + extra batteries • Battery-powered radio • Whistle (to signal for help) • Dust masks • Plastic sheeting and duct tape • Wrench or pliers • Manual can opener • Local maps • Phone charger (power bank) • Extra cash • Prescription medications (7-day supply) • Copies of important documents' },
+  { icon:'📞', title:'Emergency Contact Directory', body:'Police: 100 | Fire: 101 | Ambulance: 108 | Disaster Mgmt: 1078 | National Emergency: 112 | NDRF: 011-24363260 | Women Helpline: 1091 | Child Helpline: 1098 | Senior Citizen: 14567 | State Disaster: 1070 | Red Cross: 1800-180-1891 | Mental Health (iCall): 9152987821' },
+];
+
+const GOVT_WEBSITES = [
+  { icon:'🏛️', name:'NDMA — National Disaster Management Authority', url:'https://ndma.gov.in', disp:'ndma.gov.in', desc:'Official national disaster management policies, guidelines, and resources from Government of India.' },
+  { icon:'🚁', name:'NDRF — National Disaster Response Force', url:'https://ndrf.gov.in', disp:'ndrf.gov.in', desc:'India\'s specialized force for natural & man-made disaster response and rescue operations.' },
+  { icon:'🌦️', name:'IMD — India Meteorological Department', url:'https://mausam.imd.gov.in', disp:'mausam.imd.gov.in', desc:'Real-time weather forecasts, cyclone tracking, flood alerts, and extreme weather warnings.' },
+  { icon:'🗺️', name:'NRSC — National Remote Sensing Centre', url:'https://www.nrsc.gov.in', disp:'nrsc.gov.in', desc:'Satellite-based disaster monitoring, flood mapping, and damage assessment platform.' },
+  { icon:'💧', name:'CWC — Central Water Commission', url:'https://cwc.gov.in', disp:'cwc.gov.in', desc:'Real-time river flood forecasting, reservoir levels, and water resource management.' },
+  { icon:'🔬', name:'ICAR — Agricultural Crisis Resources', url:'https://icar.org.in', disp:'icar.org.in', desc:'Support for agricultural disaster relief, crop damage assessment, and farmer assistance.' },
+  { icon:'📱', name:'SACHET — Disaster Alert Portal', url:'https://sachet.ndma.gov.in', disp:'sachet.ndma.gov.in', desc:'Register for SMS-based disaster alerts, flood warnings, and earthquake notifications.' },
+  { icon:'🏥', name:'Ministry of Health — COVID & Disaster Response', url:'https://mohfw.gov.in', disp:'mohfw.gov.in', desc:'National health emergency protocols, hospital network, and medical disaster response guidelines.' },
+  { icon:'🏠', name:'Ministry of Home Affairs — Disaster Cell', url:'https://mha.gov.in', disp:'mha.gov.in', desc:'Disaster relief coordination, SDRF/NDRF deployment decisions, and inter-state assistance.' },
+  { icon:'🌏', name:'State Disaster Authority — Maharashtra', url:'https://disaster.maharashtra.gov.in', disp:'disaster.maharashtra.gov.in', desc:'Maharashtra state-level disaster management, relief operations, and evacuation updates.' },
+];
+
+const NOTIFS_DATA = [
+  { type:'ni-alert', title:'🌊 Flash Flood — Dharavi', body:'Immediate evacuation required for Dharavi Sector 5-9', time:'2m ago' },
+  { type:'ni-ok', title:'🏕️ New Shelter Opened', body:'BKC Convention Center is now accepting evacuees', time:'25m ago' },
+  { type:'ni-ok', title:'✅ Rescue Team Deployed', body:'4 NDRF teams dispatched to Kurla flooding area', time:'1h ago' },
+  { type:'ni-alert', title:'⚠️ Road Closure', body:'Western Express Highway blocked at Andheri — use alternate', time:'1.5h ago' },
+  { type:'ni-info', title:'IMD Update', body:'Heavy rain continuing for 48 more hours. Stay indoors.', time:'2h ago' },
+];
+
+const BOT_KB = {
+  shelter: 'Nearest shelters:\n1. Dharavi Community Center — 0.8km (320/450 occupied)\n2. Andheri Relief Camp — 2.1km (180/300 occupied)\n3. BKC Convention Center — 4.2km (420/1000 occupied)\n\nGo to Shelters page for full list and check-in option.',
+  flood: 'Flood Safety Tips:\n• Move to higher ground immediately\n• Do NOT walk through moving floodwater\n• Turn off electricity at the main switch\n• Take emergency kit: water, food, medicines, documents\n• Listen to official broadcasts only\n• Call 1078 or 112 for emergency rescue',
+  earthquake: 'Earthquake Tips:\n• DROP, COVER, HOLD ON immediately\n• Stay away from windows and falling objects\n• After: check for gas leaks — no open flames\n• Do NOT use elevators\n• Be ready for aftershocks\n• Call 112 for emergency',
+  cpr: 'CPR Steps:\n1. Confirm scene is safe\n2. Tap shoulders — "Are you OK?"\n3. Call 108 immediately\n4. 30 chest compressions hard & fast (center of chest)\n5. 2 rescue breaths if trained\n6. Continue until help arrives\nRate: 100-120 per minute',
+  sos: 'Emergency Actions:\n• Press the RED SOS button (bottom-right)\n• Call 112 (National Emergency)\n• Ambulance: 108\n• Police: 100 | Fire: 101\n• Disaster: 1078\n• Stay visible — wave bright cloth\n• 3 whistle blasts = distress signal',
+  contact: 'Emergency Contacts:\nAmbulance: 108\nFire: 101\nPolice: 100\nDisaster: 1078\nNational Emergency: 112\nNDRF: 011-24363260\nRed Cross: 1800-180-1891\nChild Helpline: 1098\nWomen Helpline: 1091',
+};
+
+const MAP_PTS = [
+  { type:'disaster', lat:19.049, lng:72.8586, lbl:'Flash Flood', det:'Level: Critical<br>Affected: 2,400<br>Status: Active', dtype:'flood' },
+  { type:'disaster', lat:19.076, lng:72.8777, lbl:'Fire', det:'Level: High<br>Contained: 60%<br>Units: 3', dtype:'fire' },
+  { type:'disaster', lat:19.0227, lng:72.861, lbl:'Flooding', det:'Level: High<br>Affected: 800<br>Status: Active', dtype:'flood' },
+  { type:'disaster', lat:19.195, lng:73.112, lbl:'Seismic Activity', det:'Magnitude: 4.2<br>Depth: 12km', dtype:'earthquake' },
+  { type:'shelter', lat:19.0459, lng:72.8574, lbl:'Dharavi Community Center', det:'Cap: 450 | Occ: 320<br>Status: Open' },
+  { type:'shelter', lat:19.1197, lng:72.847, lbl:'Andheri Relief Camp', det:'Cap: 300 | Occ: 180<br>Status: Open' },
+  { type:'shelter', lat:19.0607, lng:72.868, lbl:'BKC Convention Center', det:'Cap: 1000 | Occ: 420<br>Status: Open' },
+  { type:'resource', lat:19.0452, lng:72.859, lbl:'Food Distribution', det:'Packets: 820<br>Water: 2000L' },
+  { type:'resource', lat:19.062, lng:72.869, lbl:'Medical Camp', det:'Doctors: 8<br>Beds: 45' },
+];
+
+// ===== STATE =====
+const ST = { page:'dashboard', perfMode:false, chatMsgs:[], posts:[], reliefHist:[], quizIdx:0, quizScore:0, mapInited:false, heatCircles:[] };
+
+// ===== NAVIGATION =====
+function goPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pg = document.getElementById(id);
+  if (pg) pg.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.getAttribute('onclick') && n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active');
+  });
+  ST.page = id;
+  if (id === 'map-page' && !ST.mapInited) initMap();
+  if (id === 'resources') makeResourceChart();
+  if (id === 'admin') makeAdminChart();
+}
+
+// ===== MAP =====
+let map, mGroups = {};
+function initMap() {
+  ST.mapInited = true;
+  map = L.map('map', { center:[19.076, 72.877], zoom:11, preferCanvas:true });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom:19, attribution:'© OpenStreetMap, CartoDB' }).addTo(map);
+  mGroups.disaster = L.markerClusterGroup({ maxClusterRadius:50 });
+  mGroups.shelter  = L.markerClusterGroup({ maxClusterRadius:40 });
+  mGroups.resource = L.markerClusterGroup({ maxClusterRadius:40 });
+  loadMarkers('all');
+  Object.values(mGroups).forEach(g => map.addLayer(g));
+  map.on('zoomend', debounce(() => { document.getElementById('ms-z').textContent = map.getZoom(); }, 200));
+}
+
+const ICON_CFG = {
+  disaster: { bg:'#ff4757', em:'⚠️' },
+  shelter:  { bg:'#00e676', em:'🏕️' },
+  resource: { bg:'#00e5ff', em:'📦' },
+};
+function mkIcon(type) {
+  const c = ICON_CFG[type];
+  return L.divIcon({ className:'', html:`<div style="width:30px;height:30px;border-radius:50%;background:${c.bg};border:2px solid rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;font-size:14px">${c.em}</div>`, iconSize:[30,30], iconAnchor:[15,15] });
+}
+function loadMarkers(filter) {
+  Object.values(mGroups).forEach(g => g.clearLayers());
+  MAP_PTS.forEach(p => {
+    if (p.type === 'disaster' && filter !== 'all' && p.dtype !== filter) return;
+    const m = L.marker([p.lat, p.lng], { icon: mkIcon(p.type) });
+    m.bindPopup(`<strong style="color:#00e5ff">${p.lbl}</strong><br>${p.det}`);
+    if (mGroups[p.type]) mGroups[p.type].addLayer(m);
+  });
+}
+function toggleLayer(t) {
+  const id = t === 'disaster' ? 'lyr-dis' : t === 'shelter' ? 'lyr-she' : 'lyr-res';
+  document.getElementById(id).checked ? map.addLayer(mGroups[t]) : map.removeLayer(mGroups[t]);
+}
+function toggleHeat() {
+  if (document.getElementById('lyr-heat').checked) {
+    [[19.049,72.8586],[19.076,72.8777],[19.022,72.861]].forEach(([lat,lng]) => {
+      ST.heatCircles.push(L.circle([lat,lng], { radius:1400, color:'transparent', fillColor:'#ff4757', fillOpacity:0.18 }).addTo(map));
+    });
+  } else { ST.heatCircles.forEach(c => map.removeLayer(c)); ST.heatCircles=[]; }
+}
+function filterMap(f, btn) {
+  document.querySelectorAll('.flt-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadMarkers(f);
+}
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+
+// ===== RENDER FUNCTIONS =====
+function renderAlerts() {
+  document.getElementById('alert-list').innerHTML = ALERTS_DATA.map(a => `
+    <div class="alert-item ${a.type}">
+      <div class="alert-icon">${a.icon}</div>
+      <div class="alert-body">
+        <div class="alert-title">${a.title} <span class="tag tag-${a.tag==='critical'?'crit':a.tag==='warning'?'warn':'info'}">${a.tag.toUpperCase()}</span></div>
+        <div class="alert-meta">${a.meta}</div>
+      </div>
+      <div class="alert-time">${a.time}</div>
+    </div>`).join('');
+}
+
+function renderShelters(f='') {
+  const list = f ? SHELTERS_DATA.filter(s => s.name.toLowerCase().includes(f.toLowerCase())) : SHELTERS_DATA;
+  document.getElementById('shelter-list').innerHTML = list.map(s => {
+    const pct = Math.round(s.occ/s.cap*100);
+    const col = pct>=95?'var(--coral)':pct>=70?'var(--amber)':'var(--teal)';
+    const sc = s.status==='Full'?'badge-red':'badge-grn';
+    return `<div class="shelter-item">
+      <div>
+        <div class="shelter-name">${s.name}</div>
+        <div class="shelter-meta">📍 ${s.addr} • ${s.dist}</div>
+        <div class="shelter-meta">👥 ${s.occ} / ${s.cap} occupied (${pct}%)</div>
+        <div class="cap-bar"><div class="cap-fill" style="width:${pct}%;background:${col}"></div></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <span class="badge ${sc}">${s.status}</span><br>
+        <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="openModal('checkin-modal')">Check In</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function filterShelters(v) { renderShelters(v); }
+
+function renderResources() {
+  document.getElementById('resource-list').innerHTML = RESOURCES_DATA.map(r => {
+    const pct = Math.round(r.qty/r.max*100);
+    const col = pct<30?'var(--coral)':pct<60?'var(--amber)':'var(--teal)';
+    return `<div class="resource-item">
+      <div class="resource-icon">${r.icon}</div>
+      <div class="resource-info">
+        <div class="resource-name">${r.name}</div>
+        <div class="resource-loc">📍 ${r.loc}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:14px;font-weight:700;color:${col};font-family:var(--mono)">${r.qty.toLocaleString()}</div>
+        <div class="qty-bar"><div class="qty-fill" style="width:${pct}%;background:${col}"></div></div>
+        <div style="font-size:10px;color:var(--text3)">of ${r.max.toLocaleString()}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderVolunteers() {
+  document.getElementById('vol-list').innerHTML = VOLUNTEERS_DATA.map(v => {
+    const sc = {Active:'var(--green)','En Route':'var(--amber)',Rest:'var(--text3)'}[v.status]||'var(--text2)';
+    return `<div class="vol-card">
+      <div class="vol-avatar" style="background:${v.color}">${v.name[0]}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${v.name}</div>
+        <div style="font-size:11px;color:var(--text2)">${v.skill} • ${v.area}</div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:${sc}">${v.status}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderMissing() {
+  document.getElementById('missing-list').innerHTML = MISSING_DATA.map(p => `
+    <div class="person-card">
+      <div class="person-avatar">👤</div>
+      <div>
+        <div class="person-name">${p.name} <span class="badge ${p.status==='Located'?'badge-grn':'badge-red'}">${p.status}</span></div>
+        <div class="person-meta">Age: ${p.age} | Last seen: ${p.loc}<br>${p.desc}<br>📞 ${p.contact}</div>
+        ${p.status!=='Located'?`<button class="btn btn-ghost btn-sm" style="margin-top:8px">I've seen this person</button>`:`<div style="color:var(--green);font-size:12px;margin-top:6px">✅ Located & Safe</div>`}
+      </div>
+    </div>`).join('');
+}
+
+function renderFirstAid() {
+  document.getElementById('firstaid-list').innerHTML = FIRSTAID_DATA.map((f,i) => `
+    <div class="aid-card" id="aid-${i}" onclick="toggleAid(${i})">
+      <div class="aid-hdr">${f.icon} ${f.title} <span class="aid-arrow">▼</span></div>
+      <div class="aid-body">${f.steps.split('\n').join('<br>')}</div>
+    </div>`).join('');
+}
+function toggleAid(i) { document.getElementById('aid-'+i).classList.toggle('open'); }
+
+function renderGovLinks() {
+  const el = document.getElementById('gov-grid-list');
+  el.innerHTML = `<div class="gov-grid">` + GOVT_WEBSITES.map(g => `
+    <a class="gov-card" href="${g.url}" target="_blank" rel="noopener">
+      <div class="gov-card-icon">${g.icon}</div>
+      <div class="gov-card-name">${g.name}</div>
+      <div class="gov-card-url">${g.disp}</div>
+      <div class="gov-card-desc">${g.desc}</div>
+    </a>`).join('') + `</div>`;
+}
+
+function renderGuidelines() {
+  document.getElementById('guidelines-list').innerHTML = GUIDELINES_DATA.map(g => `
+    <div class="card">
+      <h4>${g.icon} ${g.title}</h4>
+      <div style="font-size:12px;color:var(--text2);line-height:1.9">${g.body}</div>
+    </div>`).join('');
+}
+
+function renderNotifs() {
+  document.getElementById('notif-list').innerHTML = NOTIFS_DATA.map(n => `
+    <div class="notif-item ${n.type}">
+      <div class="ni-title">${n.title}</div>
+      <div class="ni-body">${n.body}</div>
+      <div class="ni-time">${n.time}</div>
+    </div>`).join('');
+}
+
+function renderChat() {
+  const defaults = [
+    { sndr:'NDRF Coordinator', text:'All teams report to Dharavi staging area by 14:00', cls:'in' },
+    { sndr:'Dr. Mehta', text:'Medical camp at BKC is operational — 8 doctors available', cls:'in' },
+    { sndr:'Rescue Team Alpha', text:'Boat deployed in Kurla — rescued 12 people so far', cls:'in' },
+  ];
+  const all = [...defaults, ...ST.chatMsgs];
+  const c = document.getElementById('chat-messages');
+  c.innerHTML = all.map(m => `<div class="chat-msg ${m.cls}"><div class="sndr">${m.sndr||'You'}</div>${m.text}</div>`).join('');
+  c.scrollTop = c.scrollHeight;
+}
+
+function renderOnlineUsers() {
+  document.getElementById('online-users').innerHTML = ['🟢 NDRF Coordinator','🟢 Dr. Mehta (Medical)','🟢 Rescue Team Alpha','🟡 Priya Sharma','🟢 You'].map(u=>`<div>${u}</div>`).join('');
+}
+
+function renderCommunity() {
+  const defaults = [
+    { user:'Ravi K.', text:'🙏 Offering boat rescue in Dharavi — call 98765XXXXX', type:'🤝 Offer Help', time:'5m ago' },
+    { user:'Seema M.', text:'📢 Kurla main road fully flooded — avoid at all cost', type:'📢 Update', time:'12m ago' },
+    { user:'Anonymous', text:'🙏 Need help — 4 elderly, no food since morning. Dharavi Lane 8', type:'🙏 Need Help', time:'20m ago' },
+  ];
+  const all = [...ST.posts, ...defaults];
+  document.getElementById('post-list').innerHTML = all.map(p => `
+    <div class="post-card">
+      <div class="post-hdr"><span class="post-user">${p.user||'You'}</span><span class="post-type">${p.type} • ${p.time||'Just now'}</span></div>
+      <div class="post-text">${p.text}</div>
+    </div>`).join('');
+}
+
+function renderReliefHist() {
+  const c = document.getElementById('relief-history');
+  if (!ST.reliefHist.length) { c.innerHTML='<div style="font-size:13px;color:var(--text2)">No requests submitted yet.</div>'; return; }
+  c.innerHTML = ST.reliefHist.map(r => `
+    <div class="card" style="margin-bottom:8px">
+      <div style="font-size:13px;font-weight:600">${r.type} — ${r.loc}</div>
+      <div style="font-size:11px;color:var(--text2)">${r.count} people • ${r.notes||'—'}</div>
+      <div style="font-size:10px;color:var(--green);margin-top:4px">✅ Submitted — tracking active</div>
+    </div>`).join('');
+}
+
+function renderAdminTable() {
+  const rows = [['#1042','Flood','Dharavi','Pending','crit'],['#1041','Fire','Andheri','In Progress','warn'],['#1040','Landslide','Nashik','Resolved','info'],['#1039','Flood','Kurla','Pending','crit'],['#1038','Medical','BKC','In Progress','warn']];
+  document.getElementById('admin-tbody').innerHTML = rows.map(r => `<tr>
+    <td style="color:var(--text3);font-family:var(--mono)">${r[0]}</td>
+    <td>${r[1]}</td><td>${r[2]}</td>
+    <td><span class="tag tag-${r[4]}">${r[3]}</span></td>
+    <td><button class="btn btn-ghost btn-sm" onclick="alert('Reviewing ${r[0]}')">Review</button></td>
+  </tr>`).join('');
+}
+
+// ===== QUIZ =====
+function renderQuiz() {
+  if (ST.quizIdx >= QUIZ_DATA.length) {
+    document.getElementById('quiz-card').innerHTML = `
+      <div style="text-align:center;padding:24px">
+        <div style="font-size:48px;margin-bottom:14px">🏆</div>
+        <div style="font-size:28px;font-weight:700;color:var(--cyan);font-family:var(--mono)">${ST.quizScore}/${QUIZ_DATA.length}</div>
+        <div style="color:var(--text2);margin:10px 0 20px">${ST.quizScore>=4?'Excellent! You are well prepared for emergencies.':'Keep learning — your knowledge could save lives!'}</div>
+        <button class="btn btn-cyan" onclick="resetQuiz()">Try Again</button>
+      </div>`;
+    return;
+  }
+  const q = QUIZ_DATA[ST.quizIdx];
+  document.getElementById('quiz-score').textContent = `Score: ${ST.quizScore}/${ST.quizIdx}`;
+  document.getElementById('quiz-card').innerHTML = `
+    <div style="font-size:11px;color:var(--cyan2);margin-bottom:10px;font-weight:600">QUESTION ${ST.quizIdx+1} OF ${QUIZ_DATA.length}</div>
+    <div class="quiz-q">${q.q}</div>
+    <div class="quiz-opts">${q.opts.map((o,i)=>`<div class="quiz-opt" onclick="answerQuiz(${i})">${String.fromCharCode(65+i)}. ${o}</div>`).join('')}</div>`;
+}
+function answerQuiz(idx) {
+  const q = QUIZ_DATA[ST.quizIdx];
+  document.querySelectorAll('.quiz-opt').forEach((o,i) => {
+    o.style.pointerEvents='none';
+    if (i===q.correct) o.classList.add('correct');
+    else if (i===idx&&i!==q.correct) o.classList.add('wrong');
+  });
+  if (idx===q.correct) ST.quizScore++;
+  setTimeout(() => { ST.quizIdx++; renderQuiz(); }, 1300);
+}
+function resetQuiz() { ST.quizIdx=0; ST.quizScore=0; renderQuiz(); }
+
+// ===== BOT =====
+function addBotMsg(txt, cls='bot') {
+  const c = document.getElementById('bot-messages');
+  const d = document.createElement('div');
+  d.className = `bot-msg ${cls}`;
+  d.textContent = txt;
+  c.appendChild(d);
+  c.scrollTop = c.scrollHeight;
+}
+function botReply(inp) {
+  addBotMsg(inp, 'user');
+  const key = Object.keys(BOT_KB).find(k => inp.toLowerCase().includes(k));
+  setTimeout(() => addBotMsg(key ? BOT_KB[key] : 'I can help with: shelters, flood safety, earthquake tips, CPR, SOS, emergency contacts. Try a keyword or the quick buttons!'), 450);
+}
+function sendBot() {
+  const v = document.getElementById('bot-input').value.trim();
+  if (!v) return;
+  document.getElementById('bot-input').value = '';
+  botReply(v);
+}
+
+// ===== CHAT =====
+function sendChat() {
+  const v = document.getElementById('chat-input').value.trim();
+  if (!v) return;
+  const panic = ['help','trapped','emergency','sos','rescue','dying'].some(w => v.toLowerCase().includes(w));
+  ST.chatMsgs.push({ sndr:'You', text: v+(panic?` <span style="color:var(--coral);font-size:10px">⚠️ ALERT TRIGGERED</span>`:''), cls:'out' });
+  document.getElementById('chat-input').value = '';
+  renderChat();
+  if (panic) setTimeout(() => { ST.chatMsgs.push({ sndr:'ResQNet Bot', text:'🚨 Panic keyword detected. Emergency coordination team has been notified.', cls:'in' }); renderChat(); }, 700);
+}
+
+// ===== CHARTS =====
+function makeIncidentChart() {
+  const ctx = document.getElementById('incidentChart');
+  if (!ctx || ctx._built) return;
+  ctx._built = true;
+  new Chart(ctx, {
+    type:'line',
+    data: { labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], datasets:[{ label:'Incidents', data:[8,12,19,24,21,16,24], borderColor:'#ff4757', backgroundColor:'rgba(255,71,87,0.1)', borderWidth:2.5, pointRadius:4, pointBackgroundColor:'#ff4757', fill:true, tension:0.4 }] },
+    options: { responsive:true, plugins:{ legend:{display:false} }, scales:{ x:{ ticks:{color:'#7da8c0',font:{size:10}}, grid:{color:'rgba(255,255,255,0.04)'} }, y:{ ticks:{color:'#7da8c0',font:{size:10}}, grid:{color:'rgba(255,255,255,0.04)'} } }, animation:{ duration:ST.perfMode?0:800 } }
+  });
+}
+function makeResourceChart() {
+  const ctx = document.getElementById('resourceChart');
+  if (!ctx || ctx._built) return;
+  ctx._built = true;
+  new Chart(ctx, {
+    type:'bar',
+    data: { labels:RESOURCES_DATA.map(r=>r.name.split(' ')[0]), datasets:[
+      { label:'Available', data:RESOURCES_DATA.map(r=>r.qty), backgroundColor:'rgba(0,229,255,0.6)', borderRadius:5 },
+      { label:'Total', data:RESOURCES_DATA.map(r=>r.max), backgroundColor:'rgba(255,255,255,0.06)', borderRadius:5 }
+    ]},
+    options:{ responsive:true, plugins:{ legend:{labels:{color:'#7da8c0',font:{size:10}}} }, scales:{ x:{ticks:{color:'#7da8c0',font:{size:10}},grid:{display:false}}, y:{ticks:{color:'#7da8c0',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}} }, animation:{duration:ST.perfMode?0:600} }
+  });
+}
+function makeAdminChart() {
+  const ctx = document.getElementById('adminChart');
+  if (!ctx || ctx._built) return;
+  ctx._built = true;
+  new Chart(ctx, {
+    type:'doughnut',
+    data:{ labels:['Flood','Fire','Earthquake','Medical','Other'], datasets:[{ data:[45,22,12,14,7], backgroundColor:['#00e5ff','#ff4757','#e040fb','#00e676','#ffab00'], borderWidth:0, hoverOffset:6 }] },
+    options:{ responsive:true, plugins:{ legend:{position:'bottom',labels:{color:'#7da8c0',font:{size:10},padding:10}} }, animation:{duration:ST.perfMode?0:600} }
+  });
+}
+
+// ===== ACTIONS =====
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function sendSOS(type) {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(p => { document.getElementById('sos-loc').textContent = `${p.coords.latitude.toFixed(4)}, ${p.coords.longitude.toFixed(4)}`; }, () => { document.getElementById('sos-loc').textContent = 'Mumbai (approx)'; });
+  }
+  alert(`🆘 ${type.toUpperCase()} SOS SENT!\n\nEmergency team notified.\n\nCALL NOW:\n📞 National Emergency: 112\n🚑 Ambulance: 108\n🚒 Fire: 101`);
+}
+
+function callNumber(n) { alert(`📞 Calling: ${n}\n\nIn a real device this would initiate a phone call.\nSave this number: ${n}`); }
+
+function markSafe() {
+  document.getElementById('safe-time').textContent = new Date().toLocaleTimeString('en-IN');
+  openModal('safe-modal');
+}
+function autoLocate() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(p => { document.getElementById('r-loc').value = `${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`; }, () => { document.getElementById('r-loc').value = 'Location unavailable — enter manually'; });
+  }
+}
+function submitReport() {
+  const loc = document.getElementById('r-loc').value;
+  if (!loc) { alert('⚠️ Please enter a location'); return; }
+  alert(`✅ Incident Report Submitted!\n\nType: ${document.getElementById('r-type').value}\nPriority: ${document.getElementById('r-prio').value}\nLocation: ${loc}\n\nReport ID: #RPT-${Math.floor(Math.random()*9000+1000)}\nExpected response: 15-30 minutes`);
+}
+function submitRelief() {
+  const loc = document.getElementById('rel-loc').value;
+  if (!loc) { alert('⚠️ Please enter your location'); return; }
+  ST.reliefHist.push({ type:document.getElementById('rel-type').value, loc, count:document.getElementById('rel-count').value||1, notes:document.getElementById('rel-notes').value });
+  ['rel-loc','rel-count','rel-notes'].forEach(id => document.getElementById(id).value='');
+  renderReliefHist();
+  alert(`✅ Relief Request Submitted!\n\nType: ${ST.reliefHist[0].type}\nLocation: ${loc}\n\nTracking: #REL-${Math.floor(Math.random()*9000+1000)}\nEstimated delivery: 1-2 hours`);
+}
+function addPost() {
+  const txt = document.getElementById('post-text').value.trim();
+  if (!txt) return;
+  ST.posts.unshift({ user:'You', text:txt, type:document.getElementById('post-type').value, time:'Just now' });
+  document.getElementById('post-text').value = '';
+  renderCommunity();
+}
+function reportMissing() {
+  const name = document.getElementById('mp-nm').value;
+  const loc = document.getElementById('mp-lc').value;
+  if (!name||!loc) { alert('⚠️ Name and location are required'); return; }
+  MISSING_DATA.unshift({ name, age:document.getElementById('mp-ag').value, loc, desc:document.getElementById('mp-ds').value, contact:document.getElementById('mp-ct').value, status:'Searching' });
+  closeModal('missing-modal');
+  renderMissing();
+  alert(`✅ Missing Person Report Filed!\n\nCase ID: #MP-${Math.floor(Math.random()*9000+1000)}\nName: ${name}\n\nWe'll coordinate with local police and NDRF teams immediately.`);
+}
+function registerVol() {
+  const name = document.getElementById('vn-nm').value;
+  if (!name) { alert('⚠️ Please enter your name'); return; }
+  VOLUNTEERS_DATA.unshift({ name, skill:document.getElementById('vn-sk').value, status:'Available', area:'Registered', color:'#1de9b6' });
+  closeModal('vol-modal');
+  renderVolunteers();
+  alert(`✅ Volunteer Registered!\n\nName: ${name}\nSkill: ${document.getElementById('vn-sk').value}\n\nVol ID: #V-${Math.floor(Math.random()*9000+1000)}\nOur team will contact you shortly. Thank you!`);
+}
+function checkinShelter() {
+  const name = document.getElementById('ci-name').value;
+  if (!name) { alert('⚠️ Please enter your name'); return; }
+  closeModal('checkin-modal');
+  alert(`✅ Shelter Check-In Complete!\n\nShelter: ${document.getElementById('ci-she').value}\nName: ${name}\nGroup: ${document.getElementById('ci-cnt').value||1} people\n\nCheck-In Code: #CI-${Math.floor(Math.random()*9000+1000)}`);
+}
+function broadcastAlert() {
+  const msg = document.getElementById('adm-msg').value;
+  if (!msg) { alert('⚠️ Enter a message first'); return; }
+  alert(`📢 Alert Broadcasted!\n\nMessage: ${msg}\nSeverity: ${document.getElementById('adm-sev').value}\nReach: All registered users in affected zones`);
+  document.getElementById('adm-msg').value = '';
+}
+function runPrediction() {
+  const rain = parseFloat(document.getElementById('pred-rain').value)||0;
+  const wind = parseFloat(document.getElementById('pred-wind').value)||0;
+  const temp = parseFloat(document.getElementById('pred-temp').value)||0;
+  const reg = document.getElementById('pred-reg').value;
+  let risk = 0; const threats = [];
+  if (rain>100) { risk+=40; threats.push('Flood'); }
+  if (rain>200) { risk+=20; threats.push('Flash Flood'); }
+  if (wind>60) { risk+=20; threats.push('High Wind'); }
+  if (wind>100) { risk+=15; threats.push('Storm'); }
+  if (temp>40) { risk+=15; threats.push('Heat Wave'); }
+  if (reg==='Coastal') risk+=10;
+  if (reg==='Mountainous') risk+=5;
+  risk = Math.min(risk, 100);
+  const level = risk>=70?'HIGH':risk>=40?'MEDIUM':'LOW';
+  const col = risk>=70?'var(--coral)':risk>=40?'var(--amber)':'var(--green)';
+  const cls = risk>=70?'rf-high':risk>=40?'rf-med':'rf-low';
+  const rec = risk>=70?'🚨 EVACUATE IMMEDIATELY. Follow all official alerts.':risk>=40?'⚠️ Stay alert. Prepare emergency kit. Monitor news.':'✅ Stay informed. No immediate action required.';
+  const el = document.getElementById('pred-result');
+  el.style.display='block';
+  el.innerHTML = `
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:40px;font-weight:800;color:${col};font-family:var(--mono)">${level}</div>
+      <div style="font-size:13px;color:var(--text2)">Overall Risk Score: <strong style="color:${col}">${risk}%</strong></div>
+    </div>
+    <div class="risk-bar"><div class="risk-fill ${cls}" style="width:${risk}%"></div></div>
+    <div style="margin-top:14px;font-size:13px;color:var(--text2);line-height:1.9">
+      <b style="color:var(--text)">Threats Identified:</b> ${threats.length?threats.join(', '):'None significant'}<br>
+      <b style="color:var(--text)">Region Type:</b> ${reg}<br>
+      <b style="color:var(--text)">Recommendation:</b> ${rec}
+    </div>`;
+}
+
+function switchTab(el, id) {
+  el.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['tab-all','tab-crit','tab-info'].forEach(t => { const e=document.getElementById(t); if(e) e.style.display='none'; });
+  const tgt = document.getElementById(id);
+  if (!tgt) return;
+  tgt.style.display='block';
+  if (id==='tab-crit') tgt.innerHTML = ALERTS_DATA.filter(a=>a.type==='al-crit').map(a=>`<div class="alert-item al-crit"><div class="alert-icon">${a.icon}</div><div class="alert-body"><div class="alert-title">${a.title}</div><div class="alert-meta">${a.meta}</div></div><div class="alert-time">${a.time}</div></div>`).join('');
+  if (id==='tab-info') tgt.innerHTML = ALERTS_DATA.filter(a=>a.type==='al-info').map(a=>`<div class="alert-item al-info"><div class="alert-icon">${a.icon}</div><div class="alert-body"><div class="alert-title">${a.title}</div><div class="alert-meta">${a.meta}</div></div><div class="alert-time">${a.time}</div></div>`).join('');
+}
+
+// ===== UI TOGGLES =====
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('collapsed');
+  document.querySelector('.collapse-btn').textContent = sb.classList.contains('collapsed') ? '⟩ Expand' : '⟨ Collapse';
+}
+function toggleMob() { document.getElementById('sidebar').classList.toggle('mob-open'); }
+function toggleNotif() { document.getElementById('notif-panel').classList.toggle('open'); }
+function togglePerf() {
+  ST.perfMode = !ST.perfMode;
+  document.documentElement.dataset.perf = ST.perfMode ? 'low' : '';
+  document.getElementById('perf-btn').classList.toggle('active', ST.perfMode);
+  document.getElementById('perf-btn').textContent = ST.perfMode ? '⚡ Perf ON' : '⚡ Perf';
+}
+function changeLang(l) { if (l==='hi') document.title = 'ResQNet — राष्ट्रीय आपातकालीन प्रतिक्रिया'; else document.title = 'ResQNet — National Emergency Response Platform'; }
+
+// ===== REALTIME SIM =====
+function startLive() {
+  setInterval(() => {
+    const el = document.getElementById('dash-ts');
+    if (el) el.textContent = 'Last updated: ' + new Date().toLocaleString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  }, 1000);
+  setInterval(() => {
+    const el = document.getElementById('s-resc');
+    if (el) el.textContent = (parseInt(el.textContent.replace(',',''))+Math.floor(Math.random()*3)).toLocaleString();
+  }, 9000);
+  window.addEventListener('offline', () => {
+    document.getElementById('offline-bar2').textContent = '⚠️ OFFLINE MODE — Showing cached data. Will auto-sync when connection restores.';
+    document.getElementById('offline-bar2').classList.add('show');
+    document.getElementById('net-lbl').textContent = 'Offline';
+    document.querySelector('.net-dot').style.background = 'var(--coral)';
+  });
+  window.addEventListener('online', () => {
+    document.getElementById('offline-bar2').classList.remove('show');
+    document.getElementById('net-lbl').textContent = 'Online';
+    document.querySelector('.net-dot').style.background = 'var(--green)';
+  });
+}
+
+// ===== INIT =====
+window.addEventListener('DOMContentLoaded', () => {
+  renderAlerts();
+  renderShelters();
+  renderResources();
+  renderVolunteers();
+  renderMissing();
+  renderFirstAid();
+  renderGovLinks();
+  renderGuidelines();
+  renderNotifs();
+  renderChat();
+  renderCommunity();
+  renderReliefHist();
+  renderOnlineUsers();
+  renderAdminTable();
+  renderQuiz();
+  makeIncidentChart();
+  startLive();
+
+  setTimeout(() => addBotMsg('Hello! I\'m ResQNet AI Assistant. Ask me about shelter locations, flood safety, earthquake protocols, first aid, or emergency contacts. Quick buttons above are ready!'), 600);
+
+  document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if (e.target===m) m.classList.remove('open'); }));
+  if (window.innerWidth <= 768) {
+    document.getElementById('mob-btn').style.display = 'block';
+    document.getElementById('content').addEventListener('click', () => document.getElementById('sidebar').classList.remove('mob-open'));
+  }
+});
+</script>
+</body>
+</html>
